@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Card Game Online</title>
+  </head>
+  <body>
+    <h1>🔥 Card Game Online（仮）</h1>
+    <button id="createRoom">ルーム作成</button>
+    <button id="joinRoom">ルーム参加</button>
+    <pre id="status"></pre>
+
+    <script type="module">
+      // Firebase SDK読み込み
+      import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
+      import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-database.js";
+
+      const firebaseConfig = {
+  	apiKey: "AIzaSyB4wWBozfQ2A-2IppWjIGlOYmajSKBtOtM",
+  	authDomain: "luckandpick.firebaseapp.com",
+  	databaseURL: "https://luckandpick-default-rtdb.asia-southeast1.firebasedatabase.app",
+  	projectId: "luckandpick",
+  	storageBucket: "luckandpick.firebasestorage.app",
+  	messagingSenderId: "116413627559",
+  	appId: "1:116413627559:web:51cf6dbc64eb25c060ef82"
+      };
+
+      const app = initializeApp(firebaseConfig);
+      const db = getDatabase(app);
+      const status = document.getElementById("status");
+
+      document.getElementById("createRoom").onclick = async () => {
+        const roomId = Math.random().toString(36).substring(2, 8);
+        await set(ref(db, "rooms/" + roomId), {
+          createdAt: Date.now(),
+          player1: "waiting",
+          turn: "pick",
+        });
+        status.textContent = "ルーム作成完了！ID: " + roomId;
+      };
+
+      document.getElementById("joinRoom").onclick = () => {
+        const id = prompt("ルームIDを入力");
+        const roomRef = ref(db, "rooms/" + id);
+        onValue(roomRef, (snapshot) => {
+          const data = snapshot.val();
+          status.textContent = "ルーム状態:\n" + JSON.stringify(data, null, 2);
+        });
+      };
+    </script>
+  </body>
+</html>
