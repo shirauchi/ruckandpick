@@ -378,6 +378,12 @@ function renderAll(data){
 
   // アイテム情報表示
   el.myItemText.textContent = localPlayer && localPlayer.item ? `${localPlayer.item} (${localPlayer.itemUsed ? '使用済' : '未'})` : "なし";
+  
+  if (localRole === "luck" && localPlayer) {
+      renderItemArea(localPlayer.item, localPlayer.itemUsed, data, isLocalLuck);
+  } else {
+      el.itemArea.innerHTML = ''; 
+  }
 
   // 使用済みカードエリア表示
   el.usedCardArea.innerHTML = (data.usedCards || []).map(c => `<img src="${CARD_SRC[c]}" class="card-img small-card" />`).join("");
@@ -1067,3 +1073,4 @@ async function applyItemEffect(itemKey){
 if (el.roomInput.value.trim()) {
     joinRoom();
 }
+
