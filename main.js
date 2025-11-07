@@ -17,7 +17,7 @@ import {
 const firebaseConfig = {
   apiKey: "AIzaSyB4wWBozfQ2A-2IppWjIGlOYmajSKBtOtM",
   authDomain: "luckandpick.firebaseapp.com",
-  databaseURL: "https://luckandpick-default-rtdb.asia-southeast1.firebasedatabase.app",
+  databaseURL: "https://luckandpick-default-rtdb.asia-southeast1.firebasedatabase.app/",
   projectId: "luckandpick",
   storageBucket: "luckandpick.firebasestorage.app",
   messagingSenderId: "116413627559",
@@ -630,4 +630,5 @@ window.onResetGame = onResetGame;
     el.roomInput.value = h;
   }
 })();
+
 
