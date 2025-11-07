@@ -9,13 +9,13 @@ import { getDatabase, ref, set, get, update, onValue } from "https://www.gstatic
 
 // === Firebase設定 ===
 const firebaseConfig = {
-  apiKey: "",
-  authDomain: "",
-  databaseURL: "",
-  projectId: "",
-  storageBucket: "",
-  messagingSenderId: "",
-  appId: "",
+  apiKey: "AIzaSyB4wWBozfQ2A-2IppWjIGlOYmajSKBtOtM",
+  authDomain: "luckandpick.firebaseapp.com",
+  databaseURL: "https://luckandpick-default-rtdb.asia-southeast1.firebasedatabase.app/",
+  projectId: "luckandpick",
+  storageBucket: "luckandpick.firebasestorage.app",
+  messagingSenderId: "116413627559",
+  appId: "1:116413627559:web:51cf6dbc64eb25c060ef82"
 };
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
@@ -274,3 +274,4 @@ function syncRoom() {
     }
   });
 }
+
