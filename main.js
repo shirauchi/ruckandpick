@@ -498,12 +498,14 @@ function updateButtons(data, isLocalPick, isLocalLuck){
   // PICKの操作
   if(isLocalPick){
     if(data.state==="draw") {
-        // ドロー
-        if(data.pick && data.pick.hand.length !== 3) {
+        const pickHand = data.pick && data.pick.hand ? data.pick.hand : [];
+        
+        // ドロー（手札が3枚未満の場合）
+        if(pickHand.length < 3) {
           el.btnDraw.disabled = false;
         }
-        // ジョーカーコール
-        if (data.pick && data.pick.hand.length === 3 && data.pick.hand.includes("J")) {
+        // ジョーカーコール（手札が3枚でジョーカーを含む場合）
+        if (pickHand.length === 3 && pickHand.includes("J")) {
            el.btnJokerCall.disabled = false;
         }
     }
