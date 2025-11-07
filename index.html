@@ -105,7 +105,7 @@
       <div class="controls">
         <input type="text" id="roomInput" placeholder="ルームIDを入力" />
         <button id="btnCreate">ルーム作成 (Pick)</button>
-        <button id="btnJoin">ルーム参加 (Rack)</button>
+        <button id="btnJoin">ルーム参加 (Luck)</button>
         <button id="btnReset">リセット</button>
         <div class="small" style="color:var(--accent); margin-top: 0; padding: 8px 0;">
           RoomID: <span id="roomId">—</span> / Role: <span id="role">—</span>
@@ -122,7 +122,7 @@
           </div>
           <div class="status-item">
             <div class="small">現在のラックHP</div>
-            <div id="rackHp" class="hp">4</div>
+            <div id="LuckHp" class="hp">4</div>
           </div>
         </div>
 
@@ -145,12 +145,12 @@
         <!-- ターン進行/アクションボタン -->
         <div class="action-row">
           <button id="btnDraw">ドロー（Pick）</button>
-          <button id="btnPredict">初期予想（Rack）</button>
-          <button id="btnExtra">エクストラ予想（Rack）</button>
+          <button id="btnPredict">初期予想（Luck）</button>
+          <button id="btnExtra">エクストラ予想（Luck）</button>
         </div>
         <div class="action-row">
           <button id="btnJokerCall">ジョーカーコール（Pick）</button>
-          <button id="btnAdvanceTurn" disabled>ターン進行（Rack）</button>
+          <button id="btnAdvanceTurn" disabled>ターン進行（Luck）</button>
         </div>
 
         <div style="margin-top:8px;display:flex;justify-content:space-around;text-align:center">
@@ -161,7 +161,7 @@
 
         <!-- Peek2使用時に、ラック側に公開されるカードエリア -->
         <div style="margin-top:16px;text-align:center;">
-          <div class="small" style="color:#2ea3ff;">Peek2による公開情報 (Rackのみ)</div>
+          <div class="small" style="color:#2ea3ff;">Peek2による公開情報 (Luckのみ)</div>
           <div id="peekArea" class="hand" style="min-height:40px;">
               <!-- Peek2使用時にカード画像が表示される -->
           </div>
