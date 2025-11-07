@@ -5,91 +5,131 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Luck & Pick</title>
   <style>
+    /* CSS Utility Variables */
     :root{--bg:#071026;--panel:#09233a;--muted:#9fb2d6;--accent:#2ea3ff}
+    /* Base Styles */
     body{font-family:Inter, "Segoe UI", Meiryo, sans-serif;background:var(--bg);color:#e8f4ff;margin:0;padding:20px;display:flex;justify-content:center}
     .wrap{width:980px}
     header{text-align:center;margin-bottom:12px}
     .controls{display:flex;gap:8px;align-items:center;justify-content:center;margin-bottom:12px}
     input[type=text]{padding:8px;border-radius:6px;border:1px solid #113044;background:#061522;color:#e8f4ff}
-    button{background:var(--panel);color:#e8f4ff;border:none;padding:8px 12px;border-radius:8px;cursor:pointer}
+    button{background:var(--panel);color:#e8f4ff;border:none;padding:8px 12px;border-radius:8px;cursor:pointer;transition:background 0.2s}
+    button:hover:not(:disabled){background:#1f4360}
+    button:disabled{background:#113044;color:#495f84;cursor:not-allowed}
     .grid{display:grid;grid-template-columns:1fr 360px;gap:12px}
-    .panel{background:var(--panel);padding:12px;border-radius:10px;box-shadow:0 6px 18px rgba(0,0,0,0.4)}
-    .hand{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
-    .card{width:84px;height:110px;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,0.6);background:#122a3f;display:flex;align-items:center;justify-content:center}
-    .imgcard{width:84px;height:110px;object-fit:cover;border-radius:6px;cursor:pointer}
-    .small{font-size:13px;color:var(--muted)}
-    .hp{font-weight:700;font-size:18px}
-    pre.log{background:#071b2b;color:#dff1ff;padding:8px;border-radius:6px;max-height:320px;overflow:auto}
-    .row{display:flex;gap:8px;align-items:center;justify-content:space-between}
-    .center{display:flex;gap:8px;align-items:center;justify-content:center}
-    .muted{color:var(--muted);font-size:13px}
-    .danger{background:#7b2b2b}
+    .panel{background:var(--panel);padding:12px;border-radius:12px;box-shadow:0 4px 6px rgba(0,0,0,0.2)}
+    /* Typography & Layout */
+    .small{font-size:0.85rem;color:var(--muted);margin-top:8px}
+    .log{white-space:pre-wrap;overflow-y:scroll;max-height:200px;font-family:monospace;font-size:0.8rem;background:#061522;padding:8px;border-radius:6px;border:1px solid #113044}
+    .center{text-align:center}
+    /* Game Elements */
+    .hp{font-size:2rem;font-weight:bold;color:#ff4d4d}
+    .card{width:80px;height:120px;background:#324d77;border-radius:10px;display:flex;justify-content:center;align-items:center;color:#e8f4ff;font-size:2rem;font-weight:bold;margin:0 4px;box-shadow:0 2px 4px rgba(0,0,0,0.3)}
+    .imgcard{width:100%;height:100%;object-fit:contain;border-radius:10px}
+    .hand{display:flex;justify-content:center;gap:4px;min-height:120px;align-items:center;}
+    .status-box{display:flex;justify-content:space-around;margin-bottom:12px;text-align:center}
+    .status-item{flex:1}
+    /* Responsive Design */
+    @media (max-width: 1000px) {
+        .wrap { width: 100%; padding: 10px; }
+        .grid { grid-template-columns: 1fr; gap: 10px; }
+        .hand { min-height: 80px; }
+        .card { width: 60px; height: 90px; margin: 0 2px; }
+        .hp { font-size: 1.5rem; }
+    }
+    .item-card-wrapper {
+        display: inline-block;
+        position: relative;
+    }
+    .used-mask {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.6);
+        color: white;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        font-size: 1.5rem;
+        border-radius: 10px;
+        pointer-events: none;
+    }
   </style>
 </head>
 <body>
   <div class="wrap">
     <header>
       <h1>Luck & Pick</h1>
+      <div class="controls">
+        <input type="text" id="roomInput" placeholder="ルームIDを入力" />
+        <button id="btnCreate">ルーム作成 (Pick)</button>
+        <button id="btnJoin">ルーム参加 (Rack)</button>
+        <button id="btnReset">リセット</button>
+        <div class="small" style="color:var(--accent)">
+          RoomID: <span id="roomId">—</span> / Role: <span id="role">—</span>
+        </div>
+      </div>
     </header>
-
-    <div class="controls">
-      <input id="roomInput" type="text" placeholder="ルームID（空なら自動生成）" />
-      <button id="btnCreate">ルーム作成（ピック）</button>
-      <button id="btnJoin">ルーム参加（ラック）</button>
-      <button id="btnReset" class="danger">同ルームで新規ゲーム</button>
-    </div>
 
     <div class="grid">
       <div class="panel">
-        <div class="row">
-          <div>
-            <div class="small">ルームID</div>
-            <div id="roomId" class="small">—</div>
+        <div class="status-box">
+          <div class="status-item">
+            <div class="small">現在のピックHP</div>
+            <div id="pickHp" class="hp">4</div>
           </div>
-          <div>
-            <div class="small">あなた</div>
-            <div id="role" class="small">—</div>
+          <div class="status-item">
+            <div class="small">現在のラックHP</div>
+            <div id="rackHp" class="hp">4</div>
           </div>
         </div>
 
-        <hr style="border-color:#062033;margin:8px 0" />
-
-        <div class="row">
-          <div>
-            <div class="small">ピック HP</div>
-            <div id="pickHp" class="hp">-</div>
-            <div class="small">ピック 手札</div>
-            <div id="pickHand" class="hand"></div>
+        <div style="text-align:center;margin-bottom:12px">
+          <div class="small">ピックの手札 (公開予想エリア)</div>
+          <div id="pickHand" class="hand">
+            <div class="card">?</div>
+            <div class="card">?</div>
+            <div class="card">?</div>
           </div>
-          <div>
-            <div class="small">ラック HP</div>
-            <div id="rackHp" class="hp">-</div>
-            <div class="small">山札の上（ラックが見る）</div>
+          
+          <div style="margin-top:12px">
+            <div class="small">ラックが見る山札のトップ</div>
             <div id="topCard" class="card"><img id="topImg" class="imgcard" src="" alt="?" style="display:none" /></div>
           </div>
         </div>
 
         <hr style="border-color:#062033;margin:8px 0" />
-
+        
+        <!-- ラックのみ操作可能なターン進行ボタンを独立して配置 -->
         <div class="center" style="margin-bottom:8px">
-          <button id="btnDraw">ピックのドロー（ピックのみ）</button>
-          <button id="btnPredict">ラックの初期予想（ラックのみ）</button>
-          <button id="btnExtra">エクストラ予想（ラックのみ）</button>
-          <button id="btnJokerCall">ジョーカーコール（ピック）</button>
-          <button id="btnUseItem">アイテム使用（ラックのみ・HP≤2）</button>
+          <button id="btnAdvanceTurn" disabled>ターン進行 (役割交代)</button>
         </div>
 
         <div class="center" style="margin-bottom:8px">
-            <button id="btnAdvanceTurn" disabled>ターン進行（役割交代）</button>
+          <button id="btnDraw">ピックのドロー（Pick）</button>
+          <button id="btnPredict">ラックの初期予想（Rack）</button>
+          <button id="btnExtra">エクストラ予想（Rack）</button>
         </div>
-        <div style="margin-top:8px">
-          <div class="small">ターン</div>
-          <div id="turn" class="small">—</div>
-          <div class="small">状態</div>
-          <div id="state" class="small">—</div>
-          <div class="small">あなたのアイテム</div>
-          <div id="myItem" class="small">—</div>
+        <div class="center" style="margin-bottom:8px">
+          <button id="btnJokerCall">ジョーカーコール（Pick）</button>
         </div>
+
+        <div style="margin-top:8px;display:flex;justify-content:space-around;text-align:center">
+          <div><div class="small">ターン</div><div id="turn" class="small" style="font-weight:bold;color:#e8f4ff">—</div></div>
+          <div><div class="small">状態</div><div id="state" class="small" style="font-weight:bold;color:#e8f4ff">—</div></div>
+          <div><div class="small">あなたのアイテム</div><div id="myItem" class="small" style="font-weight:bold;color:#e8f4ff">—</div></div>
+        </div>
+
+        <!-- Peek2使用時に、ラック側に公開されるカードエリア -->
+        <div style="margin-top:16px;text-align:center;">
+          <div class="small" style="color:#2ea3ff;">Peek2による公開情報 (Rackのみ)</div>
+          <div id="peekArea" class="hand" style="min-height:40px;">
+              <!-- Peek2使用時にカード画像が表示される -->
+          </div>
+        </div>
+
       </div>
 
       <div class="panel">
@@ -99,16 +139,29 @@
         <hr style="border-color:#062033;margin:8px 0" />
 
         <div class="small">自分の手札（画像）</div>
-        <div id="localHand" class="hand" style="margin-top:8px"></div>
+        <div id="localHand" class="hand" style="margin-top:8px;min-height:90px;"></div>
 
         <div style="margin-top:12px">
-          <div class="small">アイテム（クリックで使用条件を満たせば発動）</div>
-          <div id="itemArea" class="hand" style="margin-top:8px"></div>
+          <div class="small">アイテム（HP≤2 & 1ゲーム1回のみ使用可）</div>
+          <div id="itemArea" class="hand" style="margin-top:8px;min-height:90px;">
+            <!-- アイテム画像がここに入ります -->
+          </div>
         </div>
       </div>
     </div>
+    
+    <!-- 使用済みカードエリア -->
+    <div class="panel" style="margin-top:12px">
+        <div class="small">使用済みカード (山札から除外済み)</div>
+        <div id="usedCardArea" class="hand" style="margin-top:8px;min-height:40px;justify-content:flex-start;flex-wrap:wrap;">
+            <!-- ここにカード画像が表示されます -->
+        </div>
+    </div>
+    <!-- 👆 修正後の usedCardArea -->
+
   </div>
 
+  <!-- Firebase v11 の import はこちら (main.js で行います) -->
   <script type="module" src="./main.js"></script>
 </body>
 </html>
