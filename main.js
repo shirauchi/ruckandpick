@@ -10,7 +10,7 @@ import {
 const firebaseConfig = {
   apiKey: "AIzaSyB4wWBozfQ2A-2IppWjIGlOYmajSKBtOtM",
   authDomain: "luckandpick.firebaseapp.com",
-  databaseURL: "https://luckandpick-default-rtdb.asia-southeast1.firebasedatabase.app",
+  databaseURL: "https://luckandpick-default-rtdb.asia-southeast1.firebasedatabase.app/",
   projectId: "luckandpick",
   storageBucket: "luckandpick.firebasestorage.app",
   messagingSenderId: "116413627559",
@@ -83,3 +83,4 @@ window.guessCard = async () => {
   if (playerRole !== "rack") return alert("ラックのみ操作可能");
   const guess = prompt("相手の手札の中から ◯ / △ / ☓ を予想");
   if (!["◯", "△", "☓]()
+
