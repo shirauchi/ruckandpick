@@ -84,3 +84,5 @@ window.guessCard = async () => {
   const guess = prompt("相手の手札の中から ◯ / △ / ☓ を予想");
   if (!["◯", "△", "☓]()
 
+window.createRoom = createRoom;
+window.joinRoom = joinRoom;
