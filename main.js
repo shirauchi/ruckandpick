@@ -1,4 +1,4 @@
-// main_full.js — 完全版（Ruck & Pick）
+// main_full_turnfix.js — 完全版（ターン入れ替え修正版）
 // Firebase 設定は下の firebaseConfig を自分の値に置き換えてください。
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js";
@@ -82,7 +82,6 @@ function shuffle(a){ for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.rando
 function now(){ return new Date().toLocaleTimeString(); }
 function pushLog(text){
   if(!roomId) {
-    // local log append
     el.logArea.textContent += `[${now()}] ${text}\n`;
     return;
   }
@@ -129,6 +128,7 @@ async function createRoom(){
     jokerEnabled: false,
     flags: {},
     pending: null,
+    turn: "pick", // who is currently pick
     pick: { hp: INITIAL_HP, hand: [], token, item: ITEM_KEYS[Math.floor(Math.random()*ITEM_KEYS.length)], itemUsed: false },
     rack: { hp: INITIAL_HP, hand: [], token: null, item: ITEM_KEYS[Math.floor(Math.random()*ITEM_KEYS.length)], itemUsed: false },
     log: [],
@@ -163,7 +163,7 @@ async function joinRoom(){
    監視（onValue）
    -------------------- */
 function watchRoom(rid){
-  if(unsubscribe) unsubscribe(); // onValue returns unsubscribe in this SDK? it returns function; we'll keep reference
+  if(unsubscribe) unsubscribe(); 
   const roomRef = ref(db, `rooms/${rid}`);
   unsubscribe = onValue(roomRef, snap => {
     const data = snap.val();
@@ -294,9 +294,13 @@ async function pickDraw(){
   // if drawn includes J -> forced joker_call
   if(drawn.includes("J")){
     updates["state"] = "joker_call";
+    // set turn to rack to respond
+    updates["turn"] = "rack";
     pushLog("ピックがジョーカーをドローしたため強制ジョーカーコール発生");
   } else {
     updates["state"] = "guess";
+    // hand out turn to rack to make guess
+    updates["turn"] = "rack";
     pushLog("ピックが3枚ドロー: " + drawn.join(","));
   }
 
@@ -305,7 +309,7 @@ async function pickDraw(){
 
 // RACK initial predict
 async function rackInitialPredict(){
-  const guess = prompt("初期予想: ピック手札の1枚を予想してください（◯=O △=T ☓=X）\n入力: O / T / X");
+  const guess = prompt("初期予想: ピック手札の1枚を予想してください（O/T/X）\n入力: O / T / X");
   if(!guess || !["O","T","X"].includes(guess)) return alert("O / T / X を入力してください");
   const roomRef = ref(db, `rooms/${roomId}`);
   const snap = await get(roomRef); if(!snap.exists()) return;
@@ -319,6 +323,8 @@ async function rackInitialPredict(){
   if(hand.includes(guess)){
     updates["pending/initialGuess"] = guess;
     updates["state"] = "extra";
+    // keep turn with rack for extra predictions
+    updates["turn"] = "rack";
     pushLog("ラックの初期予想が的中。エクストラへ移行");
   } else {
     // miss: rack loses 1 (respect shields/double)
@@ -331,10 +337,11 @@ async function rackInitialPredict(){
       updates["rack/hp"] = (data.rack.hp || INITIAL_HP) - dmg;
       pushLog("ラックの初期予想が外れ。ラックに" + dmg + "ダメージ");
     }
-    // end turn: clear pick hand, advance turnCount, state draw
+    // end turn: clear pick hand, advance turnCount, state draw and assign pick role
     updates["pick/hand"] = [];
     updates["state"] = "draw";
     updates["turnCount"] = (data.turnCount || 1) + 1;
+    updates["turn"] = "pick";
     updates["flags/doubleDamageActive"] = false;
   }
 
@@ -380,10 +387,12 @@ async function rackExtraPredict(){
     pushLog("エクストラ予想失敗。ダメージなし");
   }
 
+  // end turn: clear hand, swap roles (turnCount++), set state draw and assign pick role
   updates["pending"] = null;
   updates["pick/hand"] = [];
   updates["state"] = "draw";
   updates["turnCount"] = (data.turnCount || 1) + 1;
+  updates["turn"] = "pick";
   updates["flags/doubleDamageActive"] = false;
 
   await update(roomRef, updates);
@@ -396,7 +405,7 @@ async function pickJokerCall(){
   const data = snap.val();
   if(!data.jokerEnabled) return alert("ジョーカーはまだ有効になっていません");
   if(!data.pick || data.pick.token !== token) return alert("あなたはピックではありません");
-  await update(roomRef, { state: "joker_call", pending: { jokerCallBy: "pick" } });
+  await update(roomRef, { state: "joker_call", pending: { jokerCallBy: "pick" }, turn: "rack" });
   pushLog("ピックがジョーカーコールを発動");
 }
 
@@ -404,9 +413,8 @@ async function pickJokerCall(){
    アイテムの使用
    -------------------- */
 async function useItemUI(itemKey){
-  // Confirm and call useItem (rack only)
   if(!confirm(`アイテム「${itemKey}」を使用しますか？`)) return;
-  await useItem(); // will evaluate on server state
+  await useItem();
 }
 
 async function useItem(){
@@ -423,7 +431,6 @@ async function useItem(){
   if(item === "Peek2"){
     const reveal = (data.pick && data.pick.hand) ? data.pick.hand.slice(0,2) : [];
     updates["flags/revealToRack"] = reveal;
-    updates["rack/itemUsed"] = true;
     updates["rack/itemUsed"] = true;
     pushLog("ラックがPeek2を使用（ピックの2枚を確認）");
   } else if(item === "Shield1"){
@@ -463,6 +470,7 @@ async function resetGame(){
     jokerEnabled: false,
     flags: {},
     pending: null,
+    turn: "pick",
     pick: { hp: INITIAL_HP, hand: [], token: pickToken, item: ITEM_KEYS[Math.floor(Math.random()*ITEM_KEYS.length)], itemUsed: false },
     rack: { hp: INITIAL_HP, hand: [], token: rackToken, item: ITEM_KEYS[Math.floor(Math.random()*ITEM_KEYS.length)], itemUsed: false },
     log: [],
@@ -499,6 +507,7 @@ async function localWatcher(){
     updates["state"] = "draw";
     updates["pick/hand"] = [];
     updates["turnCount"] = (data.turnCount || 1) + 1;
+    updates["turn"] = "pick";
     updates["flags/doubleDamageActive"] = false;
     await update(ref(db, `rooms/${roomId}`), updates);
     return;
@@ -522,6 +531,7 @@ async function localWatcher(){
     updates["pending"] = null;
     updates["pick/hand"] = [];
     updates["turnCount"] = (data.turnCount || 1) + 1;
+    updates["turn"] = "pick";
     updates["flags/doubleDamageActive"] = false;
     await update(ref(db, `rooms/${roomId}`), updates);
     return;
