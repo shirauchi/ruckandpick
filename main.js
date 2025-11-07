@@ -30,6 +30,7 @@ const firebaseConfig = typeof __firebase_config !== 'undefined'
     : fallbackConfig;
 
 // __app_idを使用して、データベースのルートパスを決定
+// ユーザーの指摘通り、パスは /artifacts/{appId}/public/data/luck_pick となります。
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 const RTDB_ROOT_PATH = `/artifacts/${appId}/public/data/luck_pick`;
 
@@ -220,13 +221,12 @@ async function joinRoom() {
     const result = await runTransaction(roomRef, (currentData) => {
       if (!currentData) {
         pushLog(`ルームID ${roomId} は存在しません。`);
-        return; // トランザクションを中止
+        return; // トランザクションを中止 (result: null)
       }
       
       if (currentData.rack) {
         pushLog("既に2名のプレイヤーが参加しています。");
-        // トランザクションをコミットせずに終了させるが、処理は成功として戻り値はnull以外を返す
-        return currentData; 
+        return currentData; // 更新せずに終了 (committed: false)
       }
 
       // 2人目のプレイヤー(Rack)の情報を追加
@@ -238,29 +238,30 @@ async function joinRoom() {
       currentData.log.push(["ゲーム開始", "ラックが参加しました。ゲーム開始！ピックのドローフェーズから始まります。"]);
 
       // トランザクション内でコミットされるデータ
-      return currentData;
+      return currentData; // 更新してコミット (committed: true)
     });
 
-    // --- 修正点: トランザクションのコミットチェック ---
+    // --- 修正点: トランザクションのコミットチェックを明確化 ---
     if (result && result.committed) {
-      // 成功した場合
+      // 成功した場合 (Rackとして参加できた)
       const data = result.snapshot.val();
-      if(data.rack && data.rack.token) { // Rack情報が正しく設定されていることを確認
+      if(data.rack && data.rack.token) { 
           currentRoomId = roomId;
           myRole = "rack";
           myToken = data.rack.token;
           setupGameListener(roomId);
           pushLog(`ルームID ${roomId} にRackとして参加しました。`);
       } else {
-          // Rackが既に埋まっていた場合など、トランザクションが更新なしで終了した可能性
-          pushLog("ルームに参加できませんでした。ルームが満員かもしれません。");
+          // 理論的には起こらないが、念のため
+          pushLog("ルームへの参加に失敗しました（データ構造エラー）。");
       }
-    } else if (result) {
-        // トランザクションが中止された場合 (例: 'return'で終了)
-        pushLog("ルーム参加がキャンセルされました（ルームが存在しない、または満員）。");
+    } else if (result && !result.committed) {
+        // トランザクションが実行されたがコミットされなかった場合（Rackが埋まっていたなど）
+        // トランザクション内部でログが出ているはずなので、ここでは簡潔に通知
+        pushLog("ルームへの参加が拒否されました（満員またはデータ競合）。");
     } else {
-        // トランザクションが失敗した場合
-        pushLog("ルーム参加トランザクションが失敗しました。");
+        // トランザクションが失敗または中断された場合 (return; など)
+        pushLog("ルームに参加できませんでした（IDが存在しないなど）。");
     }
 
   } catch (error) {
@@ -885,18 +886,6 @@ el.btnUseItem.addEventListener("click", () => {
         pushLog(`無効なアイテム名が入力されました: ${item}`);
     }
 });
-
-// アイテムエリアのクリックイベント（デリゲート）- 現在はボタンがメインなので、ここでは非推奨としてログのみ
-// el.itemArea.addEventListener('click', (event) => {
-//     const itemElement = event.target.closest('.itemcard');
-//     if (itemElement) {
-//         const item = itemElement.dataset.item;
-//         if (item) {
-//             // 簡易チェック。詳細はuseItem内で行う
-//             useItem(item); 
-//         }
-//     }
-// });
 
 // --- 初期ロード時の処理 ---
 window.onload = function() {
