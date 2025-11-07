@@ -1,50 +1,107 @@
 <!DOCTYPE html>
 <html lang="ja">
-  <head>
-    <meta charset="UTF-8" />
-    <title>Card Game Online</title>
-    <style>
-      body {
-        font-family: "Segoe UI", sans-serif;
-        background: #fafafa;
-        text-align: center;
-        margin-top: 50px;
-      }
-      button {
-        margin: 6px;
-        padding: 10px 20px;
-        border-radius: 8px;
-        border: none;
-        background: #1976d2;
-        color: white;
-        font-size: 16px;
-        cursor: pointer;
-      }
-      button:hover {
-        background: #1565c0;
-      }
-      pre {
-        text-align: left;
-        width: 300px;
-        margin: 20px auto;
-        background: #fff;
-        padding: 10px;
-        border-radius: 6px;
-        box-shadow: 0 0 4px rgba(0, 0, 0, 0.1);
-      }
-    </style>
-  </head>
+<head>
+  <meta charset="utf-8" />
+  <title>Ruck & Pick — Online</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    body { font-family: "Segoe UI", Meiryo, sans-serif; background:#0f1720; color:#e6eef8; margin:0; padding:20px; }
+    header { text-align:center; margin-bottom:12px; }
+    button { background:#1f6feb; color:#fff; border:none; padding:8px 12px; border-radius:8px; cursor:pointer; margin:4px; }
+    button.secondary { background:#374151; }
+    .wrap { max-width:980px; margin:0 auto; display:grid; grid-template-columns: 1fr 360px; gap:18px; }
+    .panel { background:#071024; padding:12px; border-radius:10px; box-shadow:0 6px 18px rgba(0,0,0,0.5); }
+    .hand { display:flex; gap:8px; justify-content:center; margin-top:8px; }
+    .card { width:64px; height:92px; border-radius:8px; background:#18304a; display:flex; align-items:center; justify-content:center; font-size:28px; color:#fff; }
+    .small { font-size:13px; color:#9fb2d6; }
+    pre { background:#081626; padding:8px; border-radius:6px; max-height:280px; overflow:auto; }
+    .hp { font-weight:700; font-size:18px; color:#fff; }
+    .grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+    .item-btn { display:block; width:100%; margin-top:6px; }
+    .danger { background:#d64545; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Luck & Pick — Online</h1>
+    <div class="small">身内向けオンライン対戦（Firebase Realtime DB 使用）</div>
+  </header>
 
-  <body>
-    <h1>🔥 Card Game Online（仮）</h1>
-    <button onclick="createRoom()">ルーム作成（ピック）</button>
-    <button onclick="joinRoom()">ルーム参加（ラック）</button>
-    <br />
-    <button onclick="drawCards()">ピックのドロー</button>
-    <button onclick="guessCard()">ラックの予想</button>
+  <div style="text-align:center; margin-bottom:10px;">
+    <input id="roomInput" placeholder="ルームIDを入力（空なら自動生成）" style="padding:8px; border-radius:6px; border:1px solid #2b435d; width:260px;" />
+    <button id="btnCreate">ルーム作成（あなたがピック）</button>
+    <button id="btnJoin" class="secondary">ルーム参加（あなたはラック）</button>
+  </div>
 
-    <pre id="status">状態がここに表示されます</pre>
+  <div class="wrap">
+    <div class="panel">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <div>
+          <div class="small">ルーム:</div>
+          <div id="roomIdText" class="small">—</div>
+        </div>
+        <div>
+          <div class="small">あなた:</div>
+          <div id="roleText" class="small">—</div>
+        </div>
+      </div>
 
-    <script type="module" src="./main.js"></script>
-  </body>
+      <hr style="margin:10px 0; border-color:#072033;" />
+
+      <div style="display:flex; justify-content:space-between; gap:12px;">
+        <div>
+          <div class="small">ピック HP</div>
+          <div id="pickHp" class="hp">-</div>
+          <div class="small">ピック 手札</div>
+          <div id="pickHand" class="hand"></div>
+        </div>
+
+        <div>
+          <div class="small">ラック HP</div>
+          <div id="rackHp" class="hp">-</div>
+          <div class="small">山札の上（ラックが見る）</div>
+          <div id="topCard" class="card">?</div>
+        </div>
+      </div>
+
+      <hr style="margin:10px 0; border-color:#072033;" />
+      <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+        <button id="btnDraw" class="secondary">ピックのドロー（ピックのみ）</button>
+        <button id="btnPredict" class="secondary">ラックの予想（ラックのみ）</button>
+        <button id="btnExtra" class="secondary">エクストラ（ラックのみ）</button>
+        <button id="btnJokerCall" class="secondary">ジョーカーコール（ピック）</button>
+        <button id="btnUseItem" class="secondary">アイテム使用（条件あり）</button>
+        <button id="btnReset" class="danger">新規ゲーム（同ルーム）</button>
+      </div>
+
+      <div style="margin-top:10px;">
+        <div class="small">ターン:</div>
+        <div id="turnText" class="small">—</div>
+        <div class="small">状態:</div>
+        <div id="stateText" class="small">—</div>
+        <div class="small">あなたのアイテム:</div>
+        <div id="itemText" class="small">—</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="small">ログ</div>
+      <pre id="logArea">—</pre>
+
+      <hr style="margin:8px 0; border-color:#072033;" />
+
+      <div>
+        <div class="small">操作メモ</div>
+        <ul class="small">
+          <li>ピックは「ルーム作成」→「ピックのドロー」</li>
+          <li>ラックは「ルーム参加」→「ラックの予想」</li>
+          <li>ジョーカーは4ターン目の開始時に山札へ追加されます</li>
+          <li>アイテムはゲーム開始時にランダムで配られる（使用制限あり）</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="./main.js"></script>
+</body>
 </html>
