@@ -1,5 +1,5 @@
 // =======================================================
-// RUCK AND PICK - 完全版 v3
+// RUCK AND PICK - 完全版 v4
 // =======================================================
 // Firebase & ターン交代完全同期 + 手札非公開仕様
 // =======================================================
@@ -9,13 +9,13 @@ import { getDatabase, ref, set, get, update, onValue } from "https://www.gstatic
 
 // === Firebase設定 ===
 const firebaseConfig = {
-  apiKey: "AIzaSyB4wWBozfQ2A-2IppWjIGlOYmajSKBtOtM",
-  authDomain: "luckandpick.firebaseapp.com",
-  databaseURL: "https://luckandpick-default-rtdb.asia-southeast1.firebasedatabase.app/",
-  projectId: "luckandpick",
-  storageBucket: "luckandpick.firebasestorage.app",
-  messagingSenderId: "116413627559",
-  appId: "1:116413627559:web:51cf6dbc64eb25c060ef82"
+  apiKey: "",
+  authDomain: "",
+  databaseURL: "",
+  projectId: "",
+  storageBucket: "",
+  messagingSenderId: "",
+  appId: "",
 };
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
@@ -76,6 +76,14 @@ function generateDeck() {
 }
 
 // =======================================================
+// ランダムアイテム
+// =======================================================
+function randomItem() {
+  const items = ["2枚見る", "ダメージ無効", "ダメージ2倍", "宣言させる"];
+  return items[Math.floor(Math.random() * items.length)];
+}
+
+// =======================================================
 // ルーム作成
 // =======================================================
 createBtn.addEventListener("click", async () => {
@@ -86,8 +94,8 @@ createBtn.addEventListener("click", async () => {
   await set(ref(db, "rooms/" + roomId), {
     deckCount: deck.length,
     players: {
-      A: { hp: 4, handCount: 0, item: randomItem(), usedItem: false },
-      B: { hp: 4, handCount: 0, item: randomItem(), usedItem: false },
+      A: { hp: 4, handCount: 0, item: randomItem(), usedItem: false, isShielded: false },
+      B: { hp: 4, handCount: 0, item: randomItem(), usedItem: false, isShielded: false },
     },
     turn: "A",
     turnCount: 1,
@@ -144,8 +152,8 @@ guessBtn.addEventListener("click", async () => {
   const room = snap.val();
   if (room.turn === playerId) return; // ピックが押すの防止
 
-  // ピックの手札はローカル非公開。ラックは予想するだけ。
-  const enemyHand = localState.enemyHand || []; // デバッグ時空
+  // ピックの手札は非公開。予想はラック側だけで処理
+  const enemyHand = localState.enemyHand || [];
   const hit = enemyHand.includes(guess);
 
   if (hit) {
@@ -201,7 +209,7 @@ itemBtn.addEventListener("click", async () => {
   log("アイテム使用: " + item);
   switch (item) {
     case "2枚見る":
-      log("相手の手札を2枚覗いた！（シミュレーション）");
+      log("相手の手札を2枚覗いた！（非同期シミュレーション）");
       break;
     case "ダメージ無効":
       localState.isShielded = true;
@@ -210,28 +218,10 @@ itemBtn.addEventListener("click", async () => {
       localState.doubleDamage = true;
       break;
     case "宣言させる":
-      log("相手に持っていないカードを宣言させる！（シミュレーション）");
+      log("相手に持っていないカードを宣言させる！（非同期シミュレーション）");
       break;
   }
 });
-
-// =======================================================
-// ランダムアイテム
-// =======================================================
-function randomItem() {
-  const items = ["2枚見る", "ダメージ無効", "ダメージ2倍", "宣言させる"];
-  return items[Math.floor(Math.random() * items.length)];
-}
-
-// =======================================================
-// 山札にジョーカー登場
-// =======================================================
-function maybeInsertJoker() {
-  if (localState.turnCount >= 4 && !deck.includes("ジョーカー")) {
-    deck.push("ジョーカー");
-    log("ジョーカーが山札に出現！");
-  }
-}
 
 // =======================================================
 // カード表示
@@ -261,13 +251,11 @@ function syncRoom() {
     hpA.textContent = room.players.A.hp;
     hpB.textContent = room.players.B.hp;
 
-    // 状態表示
     turnInfo.textContent =
       room.turn === playerId
         ? "あなたのターン（ピック）"
         : "相手のターン（ラック）";
 
-    // フェーズ制御
     if (room.turn === playerId && room.state === "draw") {
       drawBtn.style.display = "inline-block";
       guessArea.style.display = "none";
@@ -279,7 +267,6 @@ function syncRoom() {
       guessArea.style.display = "none";
     }
 
-    // 勝敗判定
     if (me.hp <= 0) {
       log("あなたの敗北…");
     } else if (enemy.hp <= 0) {
