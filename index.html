@@ -96,6 +96,22 @@
         justify-content: center;
         margin-bottom: 8px;
     }
+
+    /* main.js のロジックに対応するカード画像サイズ定義 */
+.card-img {
+    width: 80px; /* 標準のカード幅 */
+    height: 120px; /* 標準のカード高さ */
+    object-fit: contain;
+    border-radius: 10px; 
+    box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+    flex-shrink: 0;
+}
+/* 使用済みカードエリアの小さい画像サイズ */
+.small-card {
+    width: 40px; 
+    height: 60px; 
+    box-shadow: none;
+}
   </style>
 </head>
 <body>
@@ -201,3 +217,4 @@
   <script type="module" src="./main.js"></script>
 </body>
 </html>
+
