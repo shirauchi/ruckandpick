@@ -13,9 +13,9 @@ import {
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-database.js";
 
 /* ====== Firebase Configuration (Fallback and Global) ====== */
-// ローカルテスト用 or __firebase_configが提供されない場合のフォールバック設定
+// Canvas環境が提供するグローバル変数を使用し、なければフォールバックを使用
+// __firebase_configが提供されない場合のフォールバック設定 (ユーザーが自身の値に置き換える必要があります)
 const fallbackConfig = {
-  // ここを自身のFirebase設定に置き換えてください
   apiKey: "AIzaSyB4wWBozfQ2A-2IppWjIGlOYmajSKBtOtM",
   authDomain: "luckandpick.firebaseapp.com",
   databaseURL: "https://luckandpick-default-rtdb.asia-southeast1.firebasedatabase.app/",
@@ -25,7 +25,6 @@ const fallbackConfig = {
   appId: "1:116413627559:web:51cf6dbc64eb25c060ef82"
 };
 
-// Canvas環境が提供するグローバル変数を使用し、なければフォールバックを使用
 const firebaseConfig = typeof __firebase_config !== 'undefined' 
     ? JSON.parse(__firebase_config) 
     : fallbackConfig;
@@ -76,24 +75,24 @@ const el = {
 const INITIAL_HP = 4;
 const CARD_TYPES = ["O", "T", "X"];
 
-// ★★★ 修正箇所: カード画像パスを相対パスと指定ファイル名に変更 ★★★
+// ★★★ 修正箇所: 画像パスを相対パス (cards/...) に変更 ★★★
 const CARD_SRC = { 
-    O: "/cards/maru.png", 
-    T: "/cards/sankaku.png", 
-    X: "/cards/batsu.png", 
-    J: "/cards/JOKER.png" // ジョーカーはそのままJOKER.pngと仮定
+    O: "cards/maru.png", 
+    T: "cards/sankaku.png", 
+    X: "cards/batsu.png", 
+    J: "cards/JOKER.png" // ジョーカーはそのままJOKER.pngと仮定
 };
 
-// ★★★ 修正箇所: アイテム画像パスを相対パスと指定ファイル名に変更 ★★★
+// ★★★ 修正箇所: アイテム画像パスを相対パス (cards/...) に変更 ★★★
 const ITEM_SRC = {
-  Peek2: "/cards/item_see.png",
-  Shield1: "/cards/item_shield.png",
-  DoubleDamage: "/cards/item_double.png",
-  ForceDeclare: "/cards/item_call.png",
+  Peek2: "cards/item_see.png",
+  Shield1: "cards/item_shield.png",
+  DoubleDamage: "cards/item_double.png",
+  ForceDeclare: "cards/item_call.png",
 };
 const ITEM_KEYS = ["Peek2", "Shield1", "DoubleDamage", "ForceDeclare"];
-// 裏面カードのパスを仮定 (もし違う場合は変更が必要です)
-const BACK_CARD_SRC = "/cards/BACK.png"; 
+// 裏面カードのパスを相対パスに変更
+const BACK_CARD_SRC = "cards/BACK.png"; 
 
 /* --------------------
    Local State
@@ -483,13 +482,14 @@ function renderItemArea(itemKey, used, data, isLocalRack){
   
   const img = document.createElement("img");
   img.className = "imgcard";
+  // ★★★ 修正箇所: 画像パスの指定を相対パスに変更 ★★★
   img.src = ITEM_SRC[itemKey] || "";
   
   base.appendChild(img);
   wrapper.appendChild(base);
 
   const rackHp = data.rack ? data.rack.hp : 0;
-  // ★★★ 修正箇所: アイテム使用条件を Rack かつ未使用 かつ HP <= 2 に変更 ★★★
+  // アイテム使用条件を Rack かつ未使用 かつ HP <= 2 に変更
   const canUseItem = isLocalRack && rackHp <= 2 && !used; 
   
   if(canUseItem){
