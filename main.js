@@ -15,13 +15,13 @@ import {
    Realtime Database の databaseURL はコンソールから正確にコピペしてね
    ======================== */
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-  databaseURL: "https://YOUR_PROJECT_ID-default-rtdb.firebaseio.com",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_PROJECT_ID.appspot.com",
-  messagingSenderId: "SENDER_ID",
-  appId: "APP_ID",
+  apiKey: "AIzaSyB4wWBozfQ2A-2IppWjIGlOYmajSKBtOtM",
+  authDomain: "luckandpick.firebaseapp.com",
+  databaseURL: "https://luckandpick-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "luckandpick",
+  storageBucket: "luckandpick.firebasestorage.app",
+  messagingSenderId: "116413627559",
+  appId: "1:116413627559:web:51cf6dbc64eb25c060ef82"
 };
 /* ======================== */
 
@@ -630,3 +630,4 @@ window.onResetGame = onResetGame;
     el.roomInput.value = h;
   }
 })();
+
