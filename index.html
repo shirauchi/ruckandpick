@@ -11,9 +11,9 @@
     body{font-family:Inter, "Segoe UI", Meiryo, sans-serif;background:var(--bg);color:#e8f4ff;margin:0;padding:20px;display:flex;justify-content:center}
     .wrap{width:980px}
     header{text-align:center;margin-bottom:12px}
-    .controls{display:flex;gap:8px;align-items:center;justify-content:center;margin-bottom:12px}
-    input[type=text]{padding:8px;border-radius:6px;border:1px solid #113044;background:#061522;color:#e8f4ff}
-    button{background:var(--panel);color:#e8f4ff;border:none;padding:8px 12px;border-radius:8px;cursor:pointer;transition:background 0.2s}
+    .controls{display:flex;gap:8px;align-items:center;justify-content:center;margin-bottom:12px;flex-wrap: wrap;}
+    input[type=text]{padding:8px;border-radius:6px;border:1px solid #113044;background:#061522;color:#e8f4ff;min-width: 150px;}
+    button{background:var(--panel);color:#e8f4ff;border:none;padding:8px 12px;border-radius:8px;cursor:pointer;transition:background 0.2s; white-space: nowrap;}
     button:hover:not(:disabled){background:#1f4360}
     button:disabled{background:#113044;color:#495f84;cursor:not-allowed}
     .grid{display:grid;grid-template-columns:1fr 360px;gap:12px}
@@ -24,7 +24,7 @@
     .center{text-align:center}
     /* Game Elements */
     .hp{font-size:2rem;font-weight:bold;color:#ff4d4d}
-    .card{width:80px;height:120px;background:#324d77;border-radius:10px;display:flex;justify-content:center;align-items:center;color:#e8f4ff;font-size:2rem;font-weight:bold;margin:0 4px;box-shadow:0 2px 4px rgba(0,0,0,0.3)}
+    .card{width:80px;height:120px;background:#324d77;border-radius:10px;display:flex;justify-content:center;align-items:center;color:#e8f4ff;font-size:2rem;font-weight:bold;margin:0 4px;box-shadow:0 2px 4px rgba(0,0,0,0.3); flex-shrink: 0;}
     .imgcard{width:100%;height:100%;object-fit:contain;border-radius:10px}
     .hand{display:flex;justify-content:center;gap:4px;min-height:120px;align-items:center;}
     .status-box{display:flex;justify-content:space-around;margin-bottom:12px;text-align:center}
@@ -36,25 +36,65 @@
         .hand { min-height: 80px; }
         .card { width: 60px; height: 90px; margin: 0 2px; }
         .hp { font-size: 1.5rem; }
+        .controls { justify-content: space-around; }
     }
+    
+    /* === アイテムカード (90度回転) のCSS === */
     .item-card-wrapper {
         display: inline-block;
         position: relative;
+        /* 外側の枠（回転後のバウンディングボックス） */
+        width: 128px; /* 回転後の高さ120px + マージン */
+        height: 88px; /* 回転後の幅80px + マージン */
+        margin: 8px 12px;
     }
-    .used-mask {
+    .item-card-base {
         position: absolute;
-        top: 0;
-        left: 0;
+        top: 50%;
+        left: 50%;
+        /* 元のカードサイズ（80px x 120px） */
+        width: 80px;
+        height: 120px; 
+        /* 90度回転して中央に配置 */
+        transform: translate(-50%, -50%) rotate(90deg);
+        
+        /* 見た目の調整 */
+        background: #324d77;
+        border-radius: 10px;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.4);
+        overflow: hidden;
+        transition: opacity 0.2s;
+    }
+    .item-card-base .imgcard {
         width: 100%;
         height: 100%;
-        background-color: rgba(0, 0, 0, 0.6);
+        object-fit: contain;
+    }
+    .used-mask {
+        /* マスクも回転後のサイズに合わせる */
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.7);
         color: white;
         display: flex;
         justify-content: center;
         align-items: center;
-        font-size: 1.5rem;
-        border-radius: 10px;
+        font-size: 1rem;
+        border-radius: 12px; 
         pointer-events: none;
+        /* マスク内のテキストを縦書きのように見せるための回転 */
+        transform: rotate(-90deg); 
+        white-space: nowrap;
+    }
+    /* ==================================== */
+
+    .action-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        justify-content: center;
+        margin-bottom: 8px;
     }
   </style>
 </head>
@@ -67,7 +107,7 @@
         <button id="btnCreate">ルーム作成 (Pick)</button>
         <button id="btnJoin">ルーム参加 (Rack)</button>
         <button id="btnReset">リセット</button>
-        <div class="small" style="color:var(--accent)">
+        <div class="small" style="color:var(--accent); margin-top: 0; padding: 8px 0;">
           RoomID: <span id="roomId">—</span> / Role: <span id="role">—</span>
         </div>
       </div>
@@ -102,18 +142,15 @@
 
         <hr style="border-color:#062033;margin:8px 0" />
         
-        <!-- ラックのみ操作可能なターン進行ボタンを独立して配置 -->
-        <div class="center" style="margin-bottom:8px">
-          <button id="btnAdvanceTurn" disabled>ターン進行 (役割交代)</button>
-        </div>
-
-        <div class="center" style="margin-bottom:8px">
-          <button id="btnDraw">ピックのドロー（Pick）</button>
-          <button id="btnPredict">ラックの初期予想（Rack）</button>
+        <!-- ターン進行/アクションボタン -->
+        <div class="action-row">
+          <button id="btnDraw">ドロー（Pick）</button>
+          <button id="btnPredict">初期予想（Rack）</button>
           <button id="btnExtra">エクストラ予想（Rack）</button>
         </div>
-        <div class="center" style="margin-bottom:8px">
+        <div class="action-row">
           <button id="btnJokerCall">ジョーカーコール（Pick）</button>
+          <button id="btnAdvanceTurn" disabled>ターン進行（Rack）</button>
         </div>
 
         <div style="margin-top:8px;display:flex;justify-content:space-around;text-align:center">
@@ -142,7 +179,7 @@
         <div id="localHand" class="hand" style="margin-top:8px;min-height:90px;"></div>
 
         <div style="margin-top:12px">
-          <div class="small">アイテム（HP≤2 & 1ゲーム1回のみ使用可）</div>
+          <div class="small">アイテム（ラックのみ HP≤2 & 1ゲーム1回のみ使用可）</div>
           <div id="itemArea" class="hand" style="margin-top:8px;min-height:90px;">
             <!-- アイテム画像がここに入ります -->
           </div>
@@ -157,11 +194,10 @@
             <!-- ここにカード画像が表示されます -->
         </div>
     </div>
-    <!-- 👆 修正後の usedCardArea -->
 
   </div>
 
-  <!-- Firebase v11 の import はこちら (main.js で行います) -->
+  <!-- JavaScriptモジュールを読み込み -->
   <script type="module" src="./main.js"></script>
 </body>
 </html>
