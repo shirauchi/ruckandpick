@@ -27,6 +27,21 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 
+// プレイヤー識別情報。ページロード時に生成し、リロードまで維持する
+let token = localStorage.getItem("playerToken");
+if (!token) {
+  token = Math.random().toString(36).substring(2, 15);
+  localStorage.setItem("playerToken", token);
+}
+let currentRoomId = localStorage.getItem("currentRoomId") || null;
+
+// 定数
+const INITIAL_HP = 5;
+const INITIAL_ITEM = 1;
+const ITEMS = ["Heal1", "Peek2", "Shield1", "DoubleDamage", "ForceDeclare", "PeekSelf"]; // アイテムリスト
+const DECK_VALUES = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "T", "J"];
+const RACK_ROLES = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "T"]; // ラックが予想できるカード
+
 /* --------------------
    DOM 要素（index.html に合わせる）
    -------------------- */
@@ -40,881 +55,903 @@ const el = {
   btnExtra: document.getElementById("btnExtra"),
   btnJokerCall: document.getElementById("btnJokerCall"),
   btnUseItem: document.getElementById("btnUseItem"),
+  
+  // 状態表示系
   roomIdText: document.getElementById("roomId"),
-  statusText: document.getElementById("status"),
-  turnText: document.getElementById("turn"),
-  stateText: document.getElementById("state"),
-  logText: document.getElementById("log"),
-  myRoleText: document.getElementById("myRole"),
-  myHpText: document.getElementById("myHp"),
-  myTokenText: document.getElementById("myToken"),
-  myDeckText: document.getElementById("myDeck"),
-  myPredictionText: document.getElementById("myPrediction"),
-  opponentHpText: document.getElementById("opponentHp"),
-  opponentTokenText: document.getElementById("opponentToken"),
-  opponentDeckText: document.getElementById("opponentDeck"),
-  topCardArea: document.getElementById("topCard"),
-  topCardImg: document.getElementById("topImg"),
-  localHandArea: document.getElementById("localHand"),
+  playerRole: document.getElementById("playerRole"),
+  turn: document.getElementById("turn"),
+  state: document.getElementById("state"),
+  myItem: document.getElementById("myItem"),
+  
+  // HPとスコア
+  rackHP: document.getElementById("rackHP"),
+  pickHP: document.getElementById("pickHP"),
+  rackScore: document.getElementById("rackScore"),
+  pickScore: document.getElementById("pickScore"),
+  
+  // カードエリア
+  topCard: document.getElementById("topCard"),
+  topImg: document.getElementById("topImg"),
+  deckCount: document.getElementById("deckCount"),
+  discardCount: document.getElementById("discardCount"),
+  localHand: document.getElementById("localHand"),
   itemArea: document.getElementById("itemArea"),
-  myItemText: document.getElementById("myItem"),
-  peekArea: document.getElementById("peekArea"), // Peek2公開用エリア
-  gameArea: document.getElementById("gameArea"), // ゲームエリア全体
-  resultArea: document.getElementById("resultArea"), // リザルトエリア全体
-  resultText: document.getElementById("resultText"), // リザルト表示テキスト
+  peekArea: document.getElementById("peekArea"), // Peek2公開エリア
+  
+  // ログ
+  log: document.getElementById("log"),
 };
 
-/* --------------------
-   定数
-   -------------------- */
-const INITIAL_HP = 5;
-const INITIAL_TOKEN = 3;
-const ROLE = {
-  RACK: "rack",
-  PICK: "pick",
-};
-const STATE = {
-  DRAW: "draw",
-  PREDICT: "predict",
-  EXTRA: "extra",
-  JOKER_CALL: "joker_call",
-  END: "end", // 終了ステートを追加
-};
-const CARDS = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "T", "J"]; // T=10
-const JOKER = "J";
-
-// カード画像のマッピング (例)
-const CARD_IMAGES = {
-  A: "https://placehold.co/60x90/cc3333/ffffff?text=A",
-  2: "https://placehold.co/60x90/33cc33/ffffff?text=2",
-  3: "https://placehold.co/60x90/3333cc/ffffff?text=3",
-  4: "https://placehold.co/60x90/cccc33/ffffff?text=4",
-  5: "https://placehold.co/60x90/cc33cc/ffffff?text=5",
-  6: "https://placehold.co/60x90/33cccc/ffffff?text=6",
-  7: "https://placehold.co/60x90/ff6600/ffffff?text=7",
-  8: "https://placehold.co/60x90/6600ff/ffffff?text=8",
-  9: "https://placehold.co/60x90/009900/ffffff?text=9",
-  T: "https://placehold.co/60x90/000000/ffffff?text=10",
-  J: "https://placehold.co/60x90/ff9900/000000?text=JOKER", // ジョーカー
-  BACK: "https://placehold.co/60x90/333333/ffffff?text=?", // 裏面
-};
-
-// アイテムの定義
-const ITEMS = {
-  Peek2: { name: "Peek2", description: "山札のトップ2枚を確認（Peek2）" },
-  Shield1: { name: "Shield1", description: "次の一回のみダメージを無効化（Shield1）" },
-  DoubleDamage: { name: "DoubleDamage", description: "次の予想ダメージを2倍（DoubleDamage）" },
-  ForceDeclare: { name: "ForceDeclare", description: "Pickにジョーカーコールを強制（ForceDeclare）" },
-};
-
-/* --------------------
-   グローバル変数
-   -------------------- */
-let myRole = null; // 自分の役割
-let roomId = null; // 現在のルームID
-let token = null; // 自分のトークン
-let logCounter = 0; // ログ表示用のカウンター
-
-/* --------------------
-   ユーティリティ
-   -------------------- */
-
-// ログ表示
-const pushLog = (message) => {
-  const timestamp = new Date().toLocaleTimeString("ja-JP", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
-  logCounter++;
-  const formattedMessage = `[${timestamp} #${logCounter}] ${message}\n`;
-  el.logText.textContent = formattedMessage + el.logText.textContent;
-  console.log(message);
-};
-
-// シャッフル
-const shuffle = (array) => {
-  for (let i = array.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [array[i], array[j]] = [array[j], array[i]];
-  }
-  return array;
-};
-
-// カードの画像を生成
-const createCardImage = (card) => {
-  const img = document.createElement("img");
-  img.className = "imgcard";
-  img.src = CARD_IMAGES[card] || CARD_IMAGES.BACK;
-  img.alt = card;
-  img.dataset.card = card;
-  return img;
-};
-
-// 数字カードの値を取得 (JOKERは常に11として扱う)
-const getCardValue = (card) => {
-  if (card === JOKER) return 11;
-  if (card === "T") return 10;
-  return parseInt(card, 10);
-};
-
-/* --------------------
-   ゲーム状態の初期化
-   -------------------- */
-
-const initializeGameData = (pickToken, rackToken) => {
-  // 3セット（1-10 + J）* 3の山札
-  let deck = [];
-  for (let i = 0; i < 3; i++) {
-    deck = deck.concat(CARDS);
-  }
-  deck = shuffle(deck);
-
-  // 初期アイテム (Rackのみ)
-  const initialItems = shuffle(Object.keys(ITEMS)).slice(0, 3);
-
-  const initialData = {
-    state: STATE.DRAW, // 初期状態はドローから
-    turn: ROLE.PICK, // 初期ターンはピック
-    turnCount: 1,
-    deck: deck, // 山札
-    topCard: null, // 現在表向きのカード
-    pending: null, // 待機中の処理 (e.g., predict, joker_call)
-    pick: {
-      token: pickToken,
-      hp: INITIAL_HP,
-      hand: [], // ピックの手札
-    },
-    rack: {
-      token: rackToken,
-      hp: INITIAL_HP,
-      items: initialItems, // ラックのアイテム
-      itemUsed: false, // アイテム使用済みフラグ（1ゲーム1回）
-    },
-    flags: {
-      // 状態フラグ
-      shieldRack: false, // ラックの守護
-      shieldPick: false, // ピックの守護
-      doubleDamageActive: false, // ダメージ2倍
-      revealToRack: null, // Peek2でラックに公開されたカード ([card1, card2] or null)
-    },
-    // 勝敗判定
-    winner: null, // 勝者 (null, 'rack', 'pick', 'draw')
-    resultReason: null, // 勝敗理由
-  };
-  return initialData;
-};
-
-/* --------------------
-   メイン処理
-   -------------------- */
-
-// 勝敗判定処理
-const checkGameEnd = (data) => {
-  const updates = {};
-  let winner = null;
-  let reason = null;
-
-  // 1. HPチェック
-  if (data.pick.hp <= 0 && data.rack.hp <= 0) {
-    winner = "draw";
-    reason = "両者のHPが0以下になりました。引き分けです。";
-  } else if (data.pick.hp <= 0) {
-    winner = ROLE.RACK;
-    reason = "ピックのHPが0になりました。ラックの勝利です。";
-  } else if (data.rack.hp <= 0) {
-    winner = ROLE.PICK;
-    reason = "ラックのHPが0になりました。ピックの勝利です。";
-  }
-
-  // 2. 山札切れチェック（HPチェックが勝敗を決定しなかった場合のみ実行）
-  if (winner === null && (data.deck || []).length === 0) {
-    reason = "山札が尽きました。残りのHPで勝敗を決定します。";
-    if (data.pick.hp > data.rack.hp) {
-      winner = ROLE.PICK;
-      reason += " ピックのHPが多いため、ピックの勝利です。";
-    } else if (data.rack.hp > data.pick.hp) {
-      winner = ROLE.RACK;
-      reason += " ラックのHPが多いため、ラックの勝利です。";
-    } else {
-      winner = "draw";
-      reason += " 両者のHPが同点のため、引き分けです。";
+// 【重要】DOM要素の初期化チェック
+// エラーの主因となる可能性が高い部分をチェックします
+for (const key in el) {
+    if (el[key] === null) {
+        console.error(`DOM要素の初期化エラー: ID ${key} に対応する要素が見つかりません。HTMLファイルを確認してください。`);
+        // エラーログを出力するだけで、プログラムの続行を試みますが、機能しない可能性があります。
+        // ユーザーのエラー行 (373行目) がこの初期化に含まれる場合、ここで判別できます。
     }
+}
+// --------------------
+
+/**
+ * ログエリアにメッセージを追加
+ * @param {string} msg 
+ */
+function pushLog(msg) {
+  const now = new Date();
+  const time = now.toLocaleTimeString('ja-JP', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  if (el.log) {
+    el.log.textContent = `[${time}] ${msg}\n` + (el.log.textContent === '—' ? '' : el.log.textContent);
+    // ログが多い場合は古いものを削除
+    const lines = el.log.textContent.split('\n');
+    if (lines.length > 50) {
+      el.log.textContent = lines.slice(0, 50).join('\n');
+    }
+  } else {
+    console.warn("ログ要素が見つかりません:", msg);
+  }
+}
+
+/**
+ * カードの画像を生成するDOMヘルパー
+ * @param {string} cardValue カードの値 ("A" - "T", "J") または "B" (裏面)
+ * @returns {HTMLDivElement}
+ */
+function createCardElement(cardValue) {
+  const cardEl = document.createElement('div');
+  cardEl.className = 'card';
+  cardEl.dataset.value = cardValue;
+
+  const imgEl = document.createElement('img');
+  imgEl.className = 'imgcard';
+  imgEl.alt = cardValue === 'B' ? '裏面' : cardValue;
+
+  // 画像URLの生成 (ここではシンプルなプレースホルダーを使用)
+  if (cardValue === 'B') {
+    // 裏面画像 (青)
+    imgEl.src = `https://placehold.co/64x90/071026/2ea3ff?text=?`;
+  } else if (DECK_VALUES.includes(cardValue)) {
+    // カード画像 (カード値)
+    imgEl.src = `https://placehold.co/64x90/071026/e8f4ff?text=${cardValue}`;
+  } else if (ITEMS.includes(cardValue)) {
+    // アイテム画像
+    imgEl.src = `https://placehold.co/64x90/09233a/2ea3ff?text=${cardValue}`;
+  } else {
+    // 不明なカード
+    imgEl.src = `https://placehold.co/64x90/262626/ffffff?text=X`;
   }
 
-  if (winner) {
-    updates["winner"] = winner;
-    updates["resultReason"] = reason;
-    updates["state"] = STATE.END;
-    pushLog("ゲーム終了! 勝者: " + winner + ", 理由: " + reason);
-  }
+  cardEl.appendChild(imgEl);
+  return cardEl;
+}
 
-  return updates;
+/**
+ * 山札と捨て札を初期化する
+ * @returns {Array<string>} シャッフルされた山札
+ */
+function createShuffledDeck() {
+  let deck = [];
+  // A, 2, ..., T (10枚) を4セット
+  for (let i = 0; i < 4; i++) {
+    deck = deck.concat(RACK_ROLES);
+  }
+  // J (ジョーカー) を1枚
+  deck.push("J");
+
+  // シャッフル (Fisher-Yates)
+  for (let i = deck.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [deck[i], deck[j]] = [deck[j], deck[i]];
+  }
+  return deck;
+}
+
+/**
+ * アイテムを初期化する
+ * @returns {string} ランダムに選ばれたアイテム
+ */
+function createInitialItem() {
+  const randomIndex = Math.floor(Math.random() * ITEMS.length);
+  return ITEMS[randomIndex];
+}
+
+/**
+ * 初期ゲーム状態
+ */
+const INITIAL_STATE = {
+  // プレイヤー情報
+  rack: { token: null, hp: INITIAL_HP, score: 0, item: createInitialItem(), itemUsed: false },
+  pick: { token: null, hp: INITIAL_HP, score: 0, item: createInitialItem(), itemUsed: false },
+  // ゲームの状態
+  turn: "pick", // pick または rack
+  state: "waiting", // waiting | setup | draw | predict | extra_predict | joker_call | game_over
+  turnCount: 1,
+  // カード
+  deck: createShuffledDeck(),
+  discard: [],
+  topCard: null, // 場に出ているカード
+  pending: null, // 予想やジョーカーコールなどの保留情報
+  // フラグ
+  flags: {
+    revealToRack: null, // Peek2で使用。ラックに公開される山札トップ2枚の配列
+    shieldRack: false, // Shield1で使用。ラックの守護状態
+    shieldPick: false, // Shield1で使用。ピックの守護状態
+    doubleDamageActive: false, // DoubleDamageで使用。次のダメージが2倍になる
+    isExtraPredictActive: false, // ExtraPredictを使用。エクストラ予想が有効
+  }
 };
 
-// 予想処理のトランザクション
-const processPrediction = async (data, prediction, isExtra) => {
-  // ピックの手札と山札のトップを取得
-  const pickCard = data.pick.hand?.[0];
-  const topCard = data.deck?.[0];
+let currentData = null; // 現在のゲーム状態
 
-  if (!pickCard || !topCard) {
-    pushLog("（エラー）カードが不足しています。予想できません。");
+/**
+ * 部屋の作成処理
+ */
+async function createRoom(roomId) {
+  if (!roomId) {
+    pushLog("ルームIDを入力してください。");
     return;
   }
 
-  const pickValue = getCardValue(pickCard);
-  const topValue = getCardValue(topCard);
-
-  const updates = {
-    // ターン終了共通処理
-    topCard: topCard, // トップカードを表にする
-    "deck/0": null, // 山札から除去
-    deck: data.deck.slice(1),
-    "pick/hand": [], // ピックの手札を空にする
-    turnCount: (data.turnCount || 1) + 1,
-    turn: ROLE.PICK, // 次のターンはピック
-    state: STATE.DRAW, // 次の状態はドロー
-    pending: null,
-    "flags/revealToRack": null, // Peek2情報をリセット
-    "flags/doubleDamageActive": false, // ダメージ2倍をリセット
-  };
-
-  // 予想の勝敗判定
-  let hit = false;
-  if (prediction === "over") {
-    hit = topValue > pickValue;
-  } else if (prediction === "under") {
-    hit = topValue < pickValue;
-  } else if (prediction === "equal") {
-    hit = topValue === pickValue;
-  }
-
-  const dmgMultiplier = (data.flags && data.flags.doubleDamageActive) ? 2 : 1;
-  const damage = isExtra ? 2 * dmgMultiplier : 1 * dmgMultiplier;
-  const isJoker = topCard === JOKER; // トップカードがジョーカーか
-
-  let logMsg = `予想: ${prediction} / 結果: ${pickValue} (${pickCard}) vs ${topValue} (${topCard})。`;
-  let resultMsg = "";
-
-  if (hit && !isJoker) {
-    // ラックの予想が的中（ジョーカーではない）
-    if (data.flags && data.flags.shieldPick) {
-      updates["flags/shieldPick"] = false;
-      resultMsg = `ラックの予想的中。ピックに${damage}ダメージ。`;
-      logMsg += resultMsg + "ピックの守護が無効化されました。";
-    } else {
-      updates["pick/hp"] = (data.pick.hp || INITIAL_HP) - damage;
-      resultMsg = `ラックの予想的中。ピックに${damage}ダメージ。`;
-      logMsg += resultMsg;
-    }
-  } else if (!hit && !isJoker) {
-    // ラックの予想が失敗（ジョーカーではない）
-    if (data.flags && data.flags.shieldRack) {
-      updates["flags/shieldRack"] = false;
-      resultMsg = `ラックの予想失敗。ラックに${damage}ダメージ。`;
-      logMsg += resultMsg + "ラックの守護が無効化されました。";
-    } else {
-      updates["rack/hp"] = (data.rack.hp || INITIAL_HP) - damage;
-      resultMsg = `ラックの予想失敗。ラックに${damage}ダメージ。`;
-      logMsg += resultMsg;
-    }
-  } else if (isJoker) {
-    // トップカードがジョーカーの場合
-    const currentToken = (data.pick.token || INITIAL_TOKEN);
-    const newToken = Math.max(0, currentToken - 1);
-    updates["pick/token"] = newToken;
-    resultMsg = `トップカードはジョーカー。ピックのトークンが1減少 (${currentToken} → ${newToken})。`;
-    logMsg += resultMsg;
-  }
-
-  pushLog(logMsg);
-
-  // ターン終了時の勝敗判定を実行
-  Object.assign(updates, checkGameEnd({ ...data, ...updates }));
-
-  return updates;
-};
-
-// --------------------
-// イベントハンドラ: 部屋操作
-// --------------------
-
-// 部屋作成
-el.btnCreate.onclick = async () => {
-  const newRoomId = el.roomInput.value.trim();
-  if (!newRoomId) return alert("ルームIDを入力してください。");
-
-  // トークン生成
-  const pickToken = Math.random().toString(36).substring(2, 8);
-  const rackToken = Math.random().toString(36).substring(2, 8);
-
-  const initialData = initializeGameData(pickToken, rackToken);
-  const roomRef = ref(db, "rooms/" + newRoomId);
-
+  const roomRef = ref(db, 'rooms/' + roomId);
   try {
-    // トランザクションで部屋の存在チェックと作成をアトミックに行う
-    const result = await runTransaction(roomRef, (currentData) => {
+    const success = await runTransaction(roomRef, (currentData) => {
       if (currentData === null) {
-        // 部屋が存在しない場合、作成する
-        return initialData;
+        // 部屋が存在しない場合のみ作成
+        const newState = {
+          ...INITIAL_STATE,
+          state: "setup", // セットアップ状態に
+          rack: { ...INITIAL_STATE.rack, token: token },
+        };
+        pushLog(`ルームID: ${roomId} を作成しました。あなたはラックです。`);
+        return newState;
       } else {
-        // 部屋が既に存在する場合、中断
+        pushLog("そのルームIDは既に存在します。");
+        return undefined; // トランザクションを中止
+      }
+    });
+
+    if (success.committed) {
+      currentRoomId = roomId;
+      localStorage.setItem("currentRoomId", roomId);
+      // ★★★ 373行目付近で問題が発生している可能性が高いのはここ。 ★★★
+      // ルームID表示を更新
+      if (el.roomIdText) { 
+        el.roomIdText.textContent = roomId; // nullチェックを追加
+      }
+      // 初期表示を更新
+      if (el.playerRole) {
+        el.playerRole.textContent = "ラック"; // nullチェックを追加
+      }
+      
+      // onValueリスナーを設定
+      setupGameListener(roomId);
+    }
+
+  } catch (error) {
+    pushLog("部屋作成エラー: " + error.message);
+    console.error("部屋作成エラー:", error);
+  }
+}
+
+/**
+ * 部屋への参加処理
+ */
+async function joinRoom(roomId) {
+  if (!roomId) {
+    pushLog("ルームIDを入力してください。");
+    return;
+  }
+
+  const roomRef = ref(db, 'rooms/' + roomId);
+  try {
+    const success = await runTransaction(roomRef, (currentData) => {
+      if (currentData && currentData.state === "setup") {
+        if (currentData.rack.token === token) {
+          pushLog("あなたは既にこのルームのラックとして参加しています。");
+          return undefined;
+        }
+        if (currentData.pick.token) {
+          pushLog("このルームは満員です。");
+          return undefined;
+        }
+        
+        // ピックとして参加
+        const deck = createShuffledDeck();
+        const pickItem = createInitialItem();
+        currentData.pick.token = token;
+        currentData.pick.item = pickItem;
+        currentData.state = "draw"; // ピックが参加したらドローフェーズへ
+        currentData.deck = deck; // 新しいデッキをセット
+        
+        pushLog(`ルームID: ${roomId} にピックとして参加しました。`);
+        return currentData;
+      } else if (currentData) {
+         // 既存の参加者として再接続
+         if (currentData.rack.token === token) {
+           pushLog(`ルームID: ${roomId} にラックとして再接続しました。`);
+           return undefined;
+         } else if (currentData.pick.token === token) {
+           pushLog(`ルームID: ${roomId} にピックとして再接続しました。`);
+           return undefined;
+         }
+         pushLog("このルームは既にゲーム中です（参加できません）。");
+         return undefined;
+      } else {
+        pushLog("そのルームIDは存在しません。");
         return undefined;
       }
     });
 
-    if (result.committed) {
-      roomId = newRoomId;
-      myRole = ROLE.PICK; // 作成者はピック
-      token = pickToken;
-      pushLog(`ルーム「${roomId}」を作成しました。あなたの役割は「ピック」です。`);
-      pushLog(`あなたのトークン: ${token}`);
-      el.statusText.textContent = `ルームID: ${roomId} / 役割: ピック`;
-      el.roomIdText.textContent = roomId;
-      setupGameListener();
-    } else {
-      alert("そのルームIDは既に存在します。");
-    }
-  } catch (error) {
-    console.error("部屋作成エラー:", error);
-    alert("部屋作成中にエラーが発生しました。");
-  }
-};
-
-// 部屋参加
-el.btnJoin.onclick = async () => {
-  roomId = el.roomInput.value.trim();
-  if (!roomId) return alert("ルームIDを入力してください。");
-
-  const roomRef = ref(db, "rooms/" + roomId);
-  try {
-    const snapshot = await get(roomRef);
-    const data = snapshot.val();
-
-    if (data) {
-      if (data.pick && data.rack) {
-        // 両プレイヤーがいる場合はエラー（今回はシンプル化のため）
-        alert("このゲームは2人用です。既に両プレイヤーが参加しています。");
-        return;
-      }
-
-      // ラックとして参加
-      if (!data.rack) {
-        myRole = ROLE.RACK;
-        token = data.rack.token; // 既存のラックトークンを取得
-        pushLog(`ルーム「${roomId}」に参加しました。あなたの役割は「ラック」です。`);
-        pushLog(`あなたのトークン: ${token}`);
-        el.statusText.textContent = `ルームID: ${roomId} / 役割: ラック`;
+    if (success.committed) {
+      currentRoomId = roomId;
+      localStorage.setItem("currentRoomId", roomId);
+       // ルームID表示を更新
+      if (el.roomIdText) {
         el.roomIdText.textContent = roomId;
-        setupGameListener();
-      } else {
-        alert("両プレイヤーが揃っています。");
       }
-    } else {
-      alert("そのルームIDは存在しません。");
+      // onValueリスナーを設定
+      setupGameListener(roomId);
     }
+
   } catch (error) {
+    pushLog("部屋参加エラー: " + error.message);
     console.error("部屋参加エラー:", error);
-    alert("部屋参加中にエラーが発生しました。");
   }
-};
-
-// リセット
-el.btnReset.onclick = async () => {
-  if (!roomId || !myRole || !token) {
-    return alert("ルームに参加していません。");
-  }
-
-  const roomRef = ref(db, "rooms/" + roomId);
-  const initialData = initializeGameData(
-    // トークンはそのまま引き継ぐ
-    myRole === ROLE.PICK ? token : null,
-    myRole === ROLE.RACK ? token : null
-  );
-
-  try {
-    // トランザクション内でリセット処理を実行
-    await runTransaction(roomRef, (currentData) => {
-      if (currentData !== null) {
-        // トークン情報だけは現行のものを引き継ぐ
-        const pickToken = currentData.pick.token;
-        const rackToken = currentData.rack.token;
-
-        // 新しい初期データに既存のトークンを上書き
-        initialData.pick.token = pickToken;
-        initialData.rack.token = rackToken;
-
-        return initialData;
-      }
-      return undefined; // 何もしない
-    });
-    pushLog("ゲームをリセットしました。");
-  } catch (error) {
-    console.error("リセットエラー:", error);
-    alert("ゲームリセット中にエラーが発生しました。");
-  }
-};
-
-// --------------------
-// イベントハンドラ: ゲーム操作
-// --------------------
-
-// ピックのドロー
-el.btnDraw.onclick = async () => {
-  if (myRole !== ROLE.PICK) return alert("あなたはピックではありません。");
-
-  const updates = {};
-  await runTransaction(ref(db, "rooms/" + roomId), (currentData) => {
-    if (currentData && currentData.pick.token === token) {
-      const data = currentData;
-
-      if (data.state !== STATE.DRAW) {
-        pushLog("（エラー）現在はドローフェーズではありません。");
-        return;
-      }
-      if (data.turn !== ROLE.PICK) {
-        pushLog("（エラー）今はピックのターンではありません。");
-        return;
-      }
-
-      // ** 山札切れの事前チェック **
-      if (data.deck.length === 0) {
-        pushLog("（エラー）山札が空です。ゲーム終了処理へ移行します。");
-        // 山札がない状態でドローを試みた場合も、終了チェックを実行
-        Object.assign(updates, checkGameEnd(data));
-        return { ...data, ...updates }; // 終了処理をトランザクションに反映
-      }
-
-
-      // 1枚引いて手札に
-      const card = data.deck[0];
-      updates["deck"] = data.deck.slice(1);
-      updates["pick/hand"] = [card];
-      updates["state"] = STATE.PREDICT; // 次はラックの予想フェーズ
-      updates["turn"] = ROLE.RACK; // 次はラックのターン
-      updates["topCard"] = CARD_IMAGES.BACK; // トップカードは裏向きのまま
-      updates["pending"] = null; // 待機中処理をクリア
-
-      pushLog("ピックがカードをドローしました。");
-      return { ...data, ...updates };
-    }
-  });
-};
-
-// ラックの初期予想
-el.btnPredict.onclick = async () => {
-  if (myRole !== ROLE.RACK) return alert("あなたはラックではありません。");
-
-  const prediction = prompt(
-    "予想を選択してください:\n[O]ver (数字が大きい)\n[U]nder (数字が小さい)\n[E]qual (数字が同じ)"
-  );
-  if (!prediction) return;
-
-  const p = prediction.toLowerCase();
-  let selectedPrediction = null;
-  if (p.startsWith("o")) selectedPrediction = "over";
-  else if (p.startsWith("u")) selectedPrediction = "under";
-  else if (p.startsWith("e")) selectedPrediction = "equal";
-  else return alert("無効な予想です。");
-
-  const updates = {};
-  await runTransaction(ref(db, "rooms/" + roomId), (currentData) => {
-    if (currentData && currentData.rack.token === token) {
-      const data = currentData;
-
-      if (data.state !== STATE.PREDICT) {
-        pushLog("（エラー）現在は予想フェーズではありません。");
-        return;
-      }
-      if (data.turn !== ROLE.RACK) {
-        pushLog("（エラー）今はラックのターンではありません。");
-        return;
-      }
-
-      updates["pending"] = { prediction: selectedPrediction };
-      updates["state"] = STATE.EXTRA; // 次はエクストラ予想フェーズ（またはそのまま処理）
-
-      pushLog(`ラックが初期予想: ${selectedPrediction} を行いました。`);
-      return { ...data, ...updates };
-    }
-  });
-};
-
-// ラックのエクストラ予想
-el.btnExtra.onclick = async () => {
-  if (myRole !== ROLE.RACK) return alert("あなたはラックではありません。");
-
-  const updates = {};
-  await runTransaction(ref(db, "rooms/" + roomId), async (currentData) => {
-    if (currentData && currentData.rack.token === token) {
-      const data = currentData;
-
-      if (data.state !== STATE.EXTRA) {
-        pushLog("（エラー）現在はエクストラ予想フェーズではありません。");
-        return;
-      }
-      if (data.turn !== ROLE.RACK) {
-        pushLog("（エラー）今はラックのターンではありません。");
-        return;
-      }
-
-      // 1. エクストラ予想を行うか確認
-      const ans = prompt("エクストラ予想をしますか？ (トークン1消費) yes / no");
-      if (!ans) return;
-      const willExtra = ans.toLowerCase().startsWith("y");
-
-      if (willExtra) {
-        // 2. トークンを消費できるかチェック
-        const currentToken = data.rack.token || INITIAL_TOKEN;
-        if (currentToken <= 0) {
-          pushLog("（エラー）エクストラ予想にはトークンが必要です。");
-          return;
-        }
-
-        updates["rack/token"] = currentToken - 1; // トークン消費
-        pushLog("ラックがエクストラ予想を行いました（トークン1消費）。");
-
-        // 3. エクストラ予想の内容を再度尋ねる（初期予想を上書き）
-        const prediction = prompt(
-          "エクストラ予想を選択してください:\n[O]ver (数字が大きい)\n[U]nder (数字が小さい)\n[E]qual (数字が同じ)"
-        );
-        if (!prediction) {
-          pushLog("（エラー）予想が中断されました。トークンは元に戻りません。");
-          // トークン消費は確定
-          updates["pending"] = null;
-          updates["state"] = STATE.DRAW;
-          updates["turn"] = ROLE.PICK;
-          updates["turnCount"] = (data.turnCount || 1) + 1;
-          return { ...data, ...updates };
-        }
-
-        const p = prediction.toLowerCase();
-        let selectedPrediction = null;
-        if (p.startsWith("o")) selectedPrediction = "over";
-        else if (p.startsWith("u")) selectedPrediction = "under";
-        else if (p.startsWith("e")) p = "equal";
-        else {
-          pushLog("（エラー）無効な予想が入力されました。トークンは元に戻りません。");
-          updates["pending"] = null;
-          updates["state"] = STATE.DRAW;
-          updates["turn"] = ROLE.PICK;
-          updates["turnCount"] = (data.turnCount || 1) + 1;
-          return { ...data, ...updates };
-        }
-
-        // 4. 予想を確定し、勝敗処理を実行
-        const predictionToProcess = selectedPrediction; // エクストラ予想を適用
-        Object.assign(
-          updates,
-          await processPrediction(data, predictionToProcess, true)
-        ); // isExtra = true
-
-        return { ...data, ...updates };
-      } else {
-        // エクストラ予想をしない場合、初期予想で勝敗処理を実行
-        const predictionToProcess = data.pending.prediction; // 初期予想を適用
-        Object.assign(
-          updates,
-          await processPrediction(data, predictionToProcess, false)
-        ); // isExtra = false
-
-        return { ...data, ...updates };
-      }
-    }
-  });
-};
-
-// ピックのジョーカーコール
-el.btnJokerCall.onclick = async () => {
-  if (myRole !== ROLE.PICK) return alert("あなたはピックではありません。");
-
-  const updates = {};
-  await runTransaction(ref(db, "rooms/" + roomId), async (currentData) => {
-    if (currentData && currentData.pick.token === token) {
-      const data = currentData;
-
-      if (data.state !== STATE.PREDICT && data.state !== STATE.EXTRA) {
-        pushLog("（エラー）ジョーカーコールは予想フェーズでのみ可能です。");
-        return;
-      }
-      if (data.turn !== ROLE.RACK) {
-        pushLog("（エラー）ジョーカーコールはラックのターン中に実行します。");
-        return;
-      }
-
-      const ans = prompt(
-        "ジョーカーコール: ラックがジョーカーを所持していると思いますか？ yes / no"
-      );
-      if (!ans) return;
-      const guessHas = ans.toLowerCase().startsWith("y");
-      const actualHas = (data.pick && (data.pick.hand || []).includes(JOKER));
-
-      let dmg = 1;
-      if (data.flags && data.flags.doubleDamageActive) dmg *= 2;
-
-      // 勝敗判定
-      if (guessHas === actualHas) {
-        // ピックの予想的中
-        if (data.flags && data.flags.shieldPick) {
-          updates["flags/shieldPick"] = false;
-          pushLog("ジョーカーコール: ピックの予想的中。ピックの守護がジョーカーコールを無効化");
-        } else {
-          updates["pick/hp"] = (data.pick.hp || INITIAL_HP) - dmg;
-          pushLog("ジョーカーコール: ピックの予想的中。ピックに" + dmg + "ダメージ");
-        }
-      } else {
-        // ピックの予想失敗
-        if (data.flags && data.flags.shieldRack) {
-          updates["flags/shieldRack"] = false;
-          pushLog("ジョーカーコール: ピックの予想失敗。ラックの守護がジョーカーコールを無効化");
-        } else {
-          updates["rack/hp"] = (data.rack.hp || INITIAL_HP) - dmg;
-          pushLog("ジョーカーコール: ピックの予想失敗。ラックに" + dmg + "ダメージ");
-        }
-      }
-
-      // 処理終了後の状態遷移（予想は行われずにターン終了）
-      updates["state"] = STATE.DRAW;
-      updates["pending"] = null;
-      updates["pick/hand"] = []; // 手札を空にする
-      updates["turnCount"] = (data.turnCount || 1) + 1;
-      updates["turn"] = ROLE.PICK;
-      updates["flags/doubleDamageActive"] = false; // ダメージ2倍をリセット
-
-      // ターン終了時の勝敗判定を実行
-      Object.assign(updates, checkGameEnd({ ...data, ...updates }));
-
-      return { ...data, ...updates };
-    }
-  });
-};
-
-// ラックのアイテム使用
-el.btnUseItem.onclick = async () => {
-  if (myRole !== ROLE.RACK) return alert("あなたはラックではありません。");
-
-  const updates = {};
-  await runTransaction(ref(db, "rooms/" + roomId), async (currentData) => {
-    if (currentData && currentData.rack.token === token) {
-      const data = currentData;
-      const rackHp = data.rack.hp || INITIAL_HP;
-
-      if (rackHp > 2) {
-        pushLog("（エラー）アイテムはラックのHPが2以下のときのみ使用可能です。");
-        return;
-      }
-      if (data.rack.itemUsed) {
-        pushLog("（エラー）アイテムは1ゲーム中に一度しか使用できません。");
-        return;
-      }
-      if (data.rack.items.length === 0) {
-        pushLog("（エラー）使用できるアイテムがありません。");
-        return;
-      }
-
-      const itemNames = data.rack.items.join(", ");
-      const selectedItem = prompt(
-        `使用するアイテム名を入力してください: (${itemNames})`
-      );
-      if (!selectedItem) return;
-
-      const itemKey = Object.keys(ITEMS).find(
-        (key) => key.toLowerCase() === selectedItem.toLowerCase()
-      );
-      if (!itemKey) {
-        pushLog("（エラー）無効なアイテム名です。");
-        return;
-      }
-
-      // アイテム消費
-      const newItems = data.rack.items.filter((i) => i !== itemKey);
-      updates["rack/items"] = newItems;
-      updates["rack/itemUsed"] = true; // 使用フラグを立てる
-
-      // アイテムごとの効果
-      switch (itemKey) {
-        case "Peek2":
-          // 山札のトップ2枚を公開
-          const deck = data.deck || [];
-          if (deck.length < 2) {
-            pushLog("（エラー）山札のカードが2枚未満のため、Peek2は使用できません。");
-            updates["rack/itemUsed"] = false; // 使用フラグを元に戻す
-            return { ...data, ...updates };
-          }
-          updates["flags/revealToRack"] = deck.slice(0, 2);
-          pushLog("Peek2を使用: 山札のトップ2枚を確認しました。");
-          break;
-        case "Shield1":
-          // Rackの守護フラグをセット
-          updates["flags/shieldRack"] = true;
-          pushLog("Shield1を使用: ラックに守護効果を付与しました。");
-          break;
-        case "DoubleDamage":
-          // ダメージ2倍フラグをセット
-          updates["flags/doubleDamageActive"] = true;
-          pushLog("DoubleDamageを使用: 次の予想ダメージが2倍になります。");
-          break;
-        case "ForceDeclare":
-          // Pickにジョーカーコールを強制する（ジョーカー所持の場合）
-          if (!(data.pick.hand || []).includes(JOKER)) {
-            pushLog("ForceDeclareを使用: ピックはジョーカーを所持していません（効果なし）。");
-          } else {
-            // 強制ジョーカーコール処理
-            updates["state"] = STATE.JOKER_CALL;
-            updates["turn"] = ROLE.RACK; // そのままラックのターン
-            updates["pending"] = { jokerCallBy: ROLE.RACK };
-            pushLog("ForceDeclareを使用: ピックにジョーカーコールを強制しました。");
-          }
-          break;
-      }
-
-      return { ...data, ...updates };
-    }
-  });
-};
-
-/* --------------------
-   ビューの更新
-   -------------------- */
-
-// ビューを更新する関数
-const updateView = (data) => {
-  if (!data) return;
-
-  // 1. 共通情報
-  el.turnText.textContent = data.turn === ROLE.PICK ? "ピック" : "ラック";
-  el.stateText.textContent = {
-    draw: "ドロー（ピック）",
-    predict: "予想（ラック）",
-    extra: "追加予想（ラック）",
-    joker_call: "強制ジョーカーコール",
-    end: "ゲーム終了", // 終了ステートの表示
-  }[data.state] || data.state;
-
-  // 2. プレイヤー情報
-  const myData = data[myRole];
-  const oppRole = myRole === ROLE.PICK ? ROLE.RACK : ROLE.PICK;
-  const oppData = data[oppRole];
-
-  if (myData) {
-    el.myRoleText.textContent = myRole === ROLE.PICK ? "ピック" : "ラック";
-    el.myHpText.textContent = myData.hp;
-    el.myTokenText.textContent = myData.token;
-    el.myDeckText.textContent = (myData.hand || []).length;
-    el.myPredictionText.textContent = data.pending?.prediction || "—";
-  }
-
-  if (oppData) {
-    el.opponentHpText.textContent = oppData.hp;
-    el.opponentTokenText.textContent = oppData.token;
-    el.opponentDeckText.textContent = (oppData.hand || []).length;
-  }
-
-  // 3. トップカード表示
-  el.topCardImg.src = CARD_IMAGES[data.topCard] || CARD_IMAGES.BACK;
-  el.topCardImg.style.display = data.topCard ? "block" : "none";
-
-  // 4. 自分の手札表示
-  el.localHandArea.innerHTML = "";
-  if (myRole === ROLE.PICK && myData && myData.hand && myData.hand.length > 0) {
-    myData.hand.forEach((card) => {
-      el.localHandArea.appendChild(createCardImage(card));
-    });
-  }
-
-  // 5. アイテム表示（ラックのみ）
-  el.myItemText.textContent = myRole === ROLE.RACK && data.rack.itemUsed ? "使用済み" : "未使用";
-  el.itemArea.innerHTML = "";
-  if (myRole === ROLE.RACK && data.rack.items && data.rack.items.length > 0) {
-    data.rack.items.forEach((itemKey) => {
-      const item = ITEMS[itemKey];
-      const div = document.createElement("div");
-      div.className = "card";
-      div.style.backgroundColor = "#ff7e7e";
-      div.style.color = "#000";
-      div.style.padding = "4px 8px";
-      div.style.borderRadius = "4px";
-      div.textContent = item.name;
-      el.itemArea.appendChild(div);
-    });
-  }
-
-  // 6. Peek2公開情報
-  el.peekArea.innerHTML = "";
-  if (myRole === ROLE.RACK && data.flags.revealToRack) {
-    data.flags.revealToRack.forEach((card) => {
-      el.peekArea.appendChild(createCardImage(card));
-    });
-  }
-
-  // 7. ボタン表示制御
-  el.btnDraw.disabled = !(
-    myRole === ROLE.PICK &&
-    data.state === STATE.DRAW &&
-    data.turn === ROLE.PICK
-  );
-  el.btnPredict.disabled = !(
-    myRole === ROLE.RACK &&
-    data.state === STATE.PREDICT &&
-    data.turn === ROLE.RACK
-  );
-  el.btnExtra.disabled = !(
-    myRole === ROLE.RACK &&
-    data.state === STATE.EXTRA &&
-    data.turn === ROLE.RACK
-  );
-  el.btnJokerCall.disabled = !(
-    myRole === ROLE.PICK &&
-    (data.state === STATE.PREDICT || data.state === STATE.EXTRA) &&
-    data.turn === ROLE.RACK
-  );
-  el.btnUseItem.disabled = !(
-    myRole === ROLE.RACK &&
-    (data.rack.hp || INITIAL_HP) <= 2 &&
-    !data.rack.itemUsed &&
-    data.rack.items.length > 0
-  );
-
-  // 8. 守護・ダメージ2倍フラグの表示
-  const flags = data.flags;
-  const flagText = [];
-  if (flags.shieldRack) flagText.push("守護(R)");
-  if (flags.shieldPick) flagText.push("守護(P)");
-  if (flags.doubleDamageActive) flagText.push("2倍DMG");
-  if (flags.revealToRack) flagText.push("Peek2済");
-
-  document.getElementById("flagsText").textContent =
-    flagText.length > 0 ? flagText.join(" / ") : "—";
-
-
-  // 9. ゲーム終了表示
-  if (data.state === STATE.END) {
-    el.gameArea.style.display = 'none';
-    el.resultArea.style.display = 'block';
-    el.resultText.textContent = `勝者: ${data.winner === 'draw' ? '引き分け' : data.winner.toUpperCase()} \n理由: ${data.resultReason}`;
-  } else {
-    el.gameArea.style.display = 'block';
-    el.resultArea.style.display = 'none';
-  }
-
-};
-
-/* --------------------
-   リスナー設定
-   -------------------- */
-
-// データベースリスナーの設定
-const setupGameListener = () => {
-  const roomRef = ref(db, "rooms/" + roomId);
+}
+
+/**
+ * ゲームリスナーの設定
+ * @param {string} roomId 
+ */
+function setupGameListener(roomId) {
+  const roomRef = ref(db, 'rooms/' + roomId);
   onValue(roomRef, (snapshot) => {
     const data = snapshot.val();
     if (data) {
-      updateView(data);
+      currentData = data;
+      renderGame(data);
     } else {
-      pushLog("ルームデータがリセットされたか、存在しません。");
-      // UIを初期状態に戻すなどの処理
+      currentData = null;
+      renderGame(null);
+      pushLog("ルームが存在しないか、リセットされました。");
     }
+  }, (error) => {
+    pushLog("データ受信エラー: " + error.message);
+    console.error("Firebase Realtime Database Error:", error);
   });
+}
+
+/**
+ * ゲームUIの更新
+ * @param {object | null} data 
+ */
+function renderGame(data) {
+  const isRack = data && data.rack && data.rack.token === token;
+  const isPick = data && data.pick && data.pick.token === token;
+  const role = isRack ? "ラック" : isPick ? "ピック" : "観戦者";
+
+  // 1. 基本情報
+  if (el.roomIdText) el.roomIdText.textContent = currentRoomId || "—";
+  if (el.playerRole) el.playerRole.textContent = role;
+  if (el.turn) el.turn.textContent = data ? (data.turn === "pick" ? "ピック" : data.turn === "rack" ? "ラック" : "—") + ` (T:${data.turnCount || 1})` : "—";
+  if (el.state) el.state.textContent = data ? data.state : "—";
+
+  if (!data) {
+    // データがない場合は初期状態に戻す
+    if (el.rackHP) el.rackHP.textContent = INITIAL_HP;
+    if (el.pickHP) el.pickHP.textContent = INITIAL_HP;
+    if (el.rackScore) el.rackScore.textContent = 0;
+    if (el.pickScore) el.pickScore.textContent = 0;
+    if (el.myItem) el.myItem.textContent = "—";
+    
+    // カードエリアをクリア
+    if (el.topImg) el.topImg.style.display = 'none';
+    if (el.deckCount) el.deckCount.textContent = 0;
+    if (el.discardCount) el.discardCount.textContent = 0;
+    if (el.localHand) el.localHand.innerHTML = '';
+    if (el.itemArea) el.itemArea.innerHTML = '';
+    if (el.peekArea) el.peekArea.innerHTML = '';
+    return;
+  }
+  
+  // 2. HPとスコア
+  if (el.rackHP) el.rackHP.textContent = data.rack.hp;
+  if (el.pickHP) el.pickHP.textContent = data.pick.hp;
+  if (el.rackScore) el.rackScore.textContent = data.rack.score;
+  if (el.pickScore) el.pickScore.textContent = data.pick.score;
+
+  // 3. 自分の情報 (手札、アイテム)
+  const myData = isRack ? data.rack : isPick ? data.pick : null;
+  const opponentData = isRack ? data.pick : isPick ? data.rack : null;
+  
+  if (el.myItem) el.myItem.textContent = myData ? myData.item : "—";
+  
+  // 手札
+  if (el.localHand) {
+    el.localHand.innerHTML = '';
+    const hand = myData && myData.hand ? myData.hand : [];
+    if (hand.length > 0) {
+        hand.forEach(card => {
+            el.localHand.appendChild(createCardElement(card));
+        });
+    } else {
+        el.localHand.textContent = (isRack || isPick) ? "手札はありません。" : "—";
+    }
+  }
+
+  // アイテム表示 (ラックのみ)
+  if (el.itemArea) {
+    el.itemArea.innerHTML = '';
+    if (isRack && myData && myData.item) {
+        el.itemArea.appendChild(createCardElement(myData.item));
+    } else {
+        el.itemArea.textContent = isRack ? "アイテムなし" : "—";
+    }
+  }
+
+  // Peek2公開エリア (ラックのみ)
+  if (el.peekArea) {
+    el.peekArea.innerHTML = '';
+    if (isRack && data.flags && data.flags.revealToRack && data.flags.revealToRack.length > 0) {
+      data.flags.revealToRack.forEach(card => {
+        el.peekArea.appendChild(createCardElement(card));
+      });
+      // 一度表示したら、次のターン開始時にリセットされるべきですが、ここでは表示を維持
+    } else {
+      el.peekArea.textContent = "公開情報なし";
+    }
+  }
+  
+  // 4. 場札と山札
+  if (el.topImg) {
+    if (data.topCard) {
+      const cardValue = data.topCard;
+      el.topImg.src = `https://placehold.co/64x90/071026/e8f4ff?text=${cardValue}`;
+      el.topImg.alt = cardValue;
+      el.topImg.style.display = 'block';
+    } else {
+      el.topImg.style.display = 'none';
+    }
+  }
+  if (el.deckCount) el.deckCount.textContent = data.deck.length;
+  if (el.discardCount) el.discardCount.textContent = data.discard.length;
+
+  // 5. ボタンの有効/無効化（ゲーム状態とロールに基づく）
+  const isMyTurn = (data.turn === 'pick' && isPick) || (data.turn === 'rack' && isRack);
+  
+  if (el.btnDraw) el.btnDraw.disabled = !(isPick && data.state === 'draw' && isMyTurn);
+  if (el.btnPredict) el.btnPredict.disabled = !(isRack && data.state === 'predict' && isMyTurn);
+  if (el.btnExtra) el.btnExtra.disabled = !(isRack && data.state === 'extra_predict' && isMyTurn);
+  if (el.btnJokerCall) el.btnJokerCall.disabled = !(isPick && data.state === 'draw'); // Pickはいつでもコールできる
+  if (el.btnUseItem) el.btnUseItem.disabled = !(isRack && data.state === 'predict' && isMyTurn && myData.hp <= 2 && myData.item && !myData.itemUsed);
+  
+  // ルーム作成・参加ボタン
+  const isSetupOrWaiting = data.state === 'waiting' || data.state === 'setup';
+  if (el.btnCreate) el.btnCreate.disabled = currentRoomId !== null;
+  if (el.btnJoin) el.btnJoin.disabled = currentRoomId !== null || !isSetupOrWaiting;
+  if (el.btnReset) el.btnReset.disabled = currentRoomId === null;
+
+  // 強制ジョーカーコール中のボタン状態
+  if (data.state === 'joker_call') {
+    if (isRack && data.pending && data.pending.jokerCallBy === "rack") {
+        if (el.btnPredict) el.btnPredict.disabled = true;
+        if (el.btnExtra) el.btnExtra.disabled = true;
+        if (el.btnDraw) el.btnDraw.disabled = true;
+        if (el.btnJokerCall) el.btnJokerCall.disabled = true;
+        // ラック側は何もせず、Pickからの応答を待つ
+    }
+  }
+  
+  // ゲーム終了
+  if (data.state === 'game_over') {
+    pushLog("--- ゲーム終了 ---");
+    // 全ての操作ボタンを無効化
+    [el.btnDraw, el.btnPredict, el.btnExtra, el.btnJokerCall, el.btnUseItem].forEach(btn => {
+      if(btn) btn.disabled = true;
+    });
+  }
+}
+
+// --------------------
+// ゲームアクション関数 (非同期でFirebaseを更新)
+// --------------------
+
+/**
+ * ピックのドロー処理
+ */
+async function drawCard() {
+  if (!currentRoomId || !currentData || currentData.turn !== 'pick' || currentData.state !== 'draw') return;
+  if (currentData.pick.token !== token) {
+    pushLog("今はピックのターンではありません。");
+    return;
+  }
+
+  const roomRef = ref(db, 'rooms/' + currentRoomId);
+  try {
+    await runTransaction(roomRef, (data) => {
+      if (data && data.turn === 'pick' && data.state === 'draw') {
+        if (data.deck.length === 0) {
+          pushLog("山札が空です。");
+          // 山札が空の場合は捨て札をシャッフルして再利用
+          data.deck = createShuffledDeck(); // 完全に初期化と同じ処理
+          data.discard = [];
+          pushLog("山札が空になりました。捨て札をシャッフルして山札に戻します。");
+        }
+
+        const drawnCard = data.deck.shift(); // 山札から1枚引く
+        
+        // ピックの手札に追加
+        if (!data.pick.hand) data.pick.hand = [];
+        data.pick.hand.push(drawnCard);
+        
+        // 状態を更新
+        data.state = 'predict'; // 次はラックの予想フェーズ
+        data.turn = 'rack'; // ターンをラックに渡す
+        
+        pushLog(`ピックがカードを1枚ドローしました。（手札: ${data.pick.hand.length}枚）`);
+        return data;
+      }
+      return undefined; // トランザクションを中断
+    });
+  } catch (error) {
+    pushLog("ドローエラー: " + error.message);
+    console.error("ドローエラー:", error);
+  }
+}
+
+/**
+ * ラックの予想処理
+ */
+async function makePrediction(isExtra = false) {
+  if (!currentRoomId || !currentData || currentData.turn !== 'rack') return;
+  if (currentData.rack.token !== token) {
+    pushLog("今はラックのターンではありません。");
+    return;
+  }
+  
+  const expectedState = isExtra ? 'extra_predict' : 'predict';
+  if (currentData.state !== expectedState) {
+    pushLog(`${expectedState === 'predict' ? '初期予想' : 'エクストラ予想'}ができる状態ではありません。`);
+    return;
+  }
+  
+  // 予想するカードを選択
+  let prediction = prompt("予想するカードの値を入力してください (" + RACK_ROLES.join(", ") + ")");
+  if (!prediction) return;
+  prediction = prediction.toUpperCase();
+  
+  if (!RACK_ROLES.includes(prediction)) {
+    pushLog("無効なカード値です。A, 2, ..., T から選んでください。");
+    return;
+  }
+
+  // 予想の整合性チェック
+  if (isExtra) {
+      const topCard = currentData.topCard;
+      if (!topCard) {
+          pushLog("場札がありません。エクストラ予想はできません。");
+          return;
+      }
+      if (prediction !== topCard) {
+          pushLog("エクストラ予想では、場札と同じカードを予想する必要があります。");
+          return;
+      }
+  }
+
+  const roomRef = ref(db, 'rooms/' + currentRoomId);
+  try {
+    await runTransaction(roomRef, (data) => {
+      if (data && data.turn === 'rack' && data.state === expectedState) {
+        
+        // ピックの手札をチェック
+        const hand = data.pick.hand || [];
+        const cardIndex = hand.indexOf(prediction);
+        let updates = {};
+        let dmg = 1; 
+        if(data.flags && data.flags.doubleDamageActive) dmg*=2;
+
+        if (cardIndex !== -1) {
+          // 予想的中
+          const removedCard = hand.splice(cardIndex, 1)[0];
+          updates["pick/hand"] = hand;
+          updates["discard"] = [...data.discard, removedCard];
+          
+          if (isExtra) {
+            // エクストラ予想成功
+            updates["topCard"] = null; // 場札を捨てる
+            updates["discard"] = [...updates["discard"], data.topCard];
+            if (data.flags && data.flags.shieldPick) { updates["flags/shieldPick"] = false; pushLog("ピックの守護が予想を無効化"); }
+            else { updates["rack/hp"] = (data.rack.hp || INITIAL_HP) - dmg; pushLog("エクストラ予想的中: ピックは守った。ラックに" + dmg + "ダメージ"); }
+            
+          } else {
+            // 初期予想成功
+            if (data.flags && data.flags.shieldPick) { updates["flags/shieldPick"] = false; pushLog("ピックの守護が予想を無効化"); }
+            else { updates["pick/hp"] = (data.pick.hp || INITIAL_HP) - dmg; pushLog("予想的中: ピックに" + dmg + "ダメージ"); }
+          }
+          
+          // 次の状態へ
+          updates["topCard"] = null; // 場札をクリア（成功時は常にクリア）
+          updates["state"] = "draw";
+          updates["turn"] = "pick";
+          updates["turnCount"] = (data.turnCount || 1) + 1;
+          updates["flags/doubleDamageActive"] = false;
+
+        } else if (prediction === "J" && hand.includes("J")) {
+             // 予想がJokerで、PickがJokerを持っている場合 (予想失敗 - Joker Callの強制)
+            updates["state"] = "joker_call";
+            updates["turn"] = "pick"; // ピックのターンに渡す
+            updates["pending"] = { jokerCallBy: "rack" };
+            pushLog("予想失敗（ジョーカー所持の疑い）: ピックにジョーカーコールを強制します。");
+            return { ...data, ...updates };
+
+        } else {
+          // 予想失敗
+          if (data.flags && data.flags.shieldRack) { updates["flags/shieldRack"] = false; pushLog("ラックの守護が予想を無効化"); }
+          else { updates["rack/hp"] = (data.rack.hp || INITIAL_HP) - dmg; pushLog("予想失敗: ラックに" + dmg + "ダメージ"); }
+          
+          if (isExtra) {
+            // エクストラ予想失敗
+            updates["topCard"] = null; // 場札は残る（失敗時は残る）
+            updates["state"] = "draw";
+            updates["turn"] = "pick";
+            updates["turnCount"] = (data.turnCount || 1) + 1;
+            updates["flags/doubleDamageActive"] = false;
+          } else {
+            // 初期予想失敗
+            updates["topCard"] = prediction; // 予想を場札として公開
+            updates["state"] = "extra_predict"; // エクストラ予想フェーズへ
+            updates["turn"] = "rack"; // ターンはラックのまま
+          }
+        }
+        
+        // HPチェック
+        const pickHP = (updates["pick/hp"] !== undefined ? updates["pick/hp"] : data.pick.hp) || INITIAL_HP;
+        const rackHP = (updates["rack/hp"] !== undefined ? updates["rack/hp"] : data.rack.hp) || INITIAL_HP;
+        
+        if (pickHP <= 0 || rackHP <= 0) {
+            updates["state"] = "game_over";
+            updates["rack/score"] = rackHP <= 0 ? data.rack.score : data.rack.score + 1;
+            updates["pick/score"] = pickHP <= 0 ? data.pick.score : data.pick.score + 1;
+            pushLog(pickHP <= 0 ? "ラックの勝利！" : rackHP <= 0 ? "ピックの勝利！" : "エラー");
+        }
+        
+        return { ...data, ...updates };
+      }
+      return undefined;
+    });
+  } catch (error) {
+    pushLog("予想エラー: " + error.message);
+    console.error("予想エラー:", error);
+  }
+}
+
+/**
+ * ピックのジョーカーコール処理
+ */
+async function jokerCall() {
+  if (!currentRoomId || !currentData || currentData.pick.token !== token) return;
+  if (currentData.state !== 'draw') {
+    pushLog("ジョーカーコールはドローフェーズ中のみ可能です。");
+    return;
+  }
+
+  // Pickがジョーカーを所持しているかを確認
+  const hand = currentData.pick.hand || [];
+  const hasJoker = hand.includes("J");
+  
+  if (!hasJoker) {
+      pushLog("ジョーカーを所持していないため、コールできません。");
+      return;
+  }
+
+  const roomRef = ref(db, 'rooms/' + currentRoomId);
+  try {
+    await runTransaction(roomRef, (data) => {
+      if (data && data.state === 'draw') {
+        let updates = {};
+        
+        // ピックはジョーカーをコールし、手札からJokerを公開
+        const jokerIndex = data.pick.hand.indexOf("J");
+        if (jokerIndex === -1) {
+            // ここでJokerがないのはおかしいが、念のため
+            pushLog("エラー: ジョーカーが見つかりません。");
+            return undefined;
+        }
+
+        const removedCard = data.pick.hand.splice(jokerIndex, 1)[0];
+        updates["pick/hand"] = data.pick.hand;
+        updates["discard"] = [...data.discard, removedCard];
+        
+        // ダメージ計算（ジョーカーコールは必ず成功し、ラックにダメージ）
+        let dmg = 1; if(data.flags && data.flags.doubleDamageActive) dmg*=2;
+        
+        if(data.flags && data.flags.shieldRack){ updates["flags/shieldRack"] = false; pushLog("ラックの守護がジョーカーコールを無効化"); }
+        else { updates["rack/hp"] = (data.rack.hp || INITIAL_HP) - dmg; pushLog("ピックがジョーカーコール！ラックに" + dmg + "ダメージ"); }
+
+        // 次のターンへ
+        updates["state"] = "draw";
+        updates["turn"] = "pick";
+        updates["turnCount"] = (data.turnCount || 1) + 1;
+        updates["topCard"] = null;
+        updates["flags/doubleDamageActive"] = false;
+        updates["pending"] = null;
+
+        // HPチェック
+        const rackHP = (updates["rack/hp"] !== undefined ? updates["rack/hp"] : data.rack.hp) || INITIAL_HP;
+        if (rackHP <= 0) {
+            updates["state"] = "game_over";
+            updates["pick/score"] = data.pick.score + 1;
+            pushLog("ピックの勝利！ラックHPが0になりました。");
+        }
+        
+        return { ...data, ...updates };
+      }
+      return undefined;
+    });
+  } catch (error) {
+    pushLog("ジョーカーコールエラー: " + error.message);
+    console.error("ジョーカーコールエラー:", error);
+  }
+}
+
+/**
+ * 強制ジョーカーコールに対するピックの応答
+ */
+async function respondToJokerCall() {
+  if (!currentRoomId || !currentData || currentData.pick.token !== token) return;
+  if (currentData.state !== 'joker_call' || !(currentData.pending && currentData.pending.jokerCallBy === "rack")) return;
+
+  const roomRef = ref(db, 'rooms/' + currentRoomId);
+  
+  // ピックの応答（ジョーカーを持っているか否か）
+  const hand = currentData.pick.hand || [];
+  const actualHas = hand.includes("J");
+  let guessHas = null;
+
+  // 強制コールに対する応答は、ジョーカーの有無を隠すことはできない
+  if (actualHas) {
+      // PickがJokerを持っている場合（コールが成功）
+      jokerCall(); // 既存のジョーカーコール処理を呼び出す
+      return;
+  } else {
+      // PickがJokerを持っていない場合（コールが失敗）
+      try {
+        await runTransaction(roomRef, (data) => {
+            if (data && data.state === 'joker_call' && data.pending && data.pending.jokerCallBy === "rack") {
+                let updates = {};
+                let dmg = 1; if(data.flags && data.flags.doubleDamageActive) dmg*=2;
+
+                // ラックの予想失敗として処理
+                if(data.flags && data.flags.shieldRack){ updates["flags/shieldRack"] = false; pushLog("ラックの守護がジョーカーコールを無効化"); }
+                else { updates["rack/hp"] = (data.rack.hp || INITIAL_HP) - dmg; pushLog("強制ジョーカーコール: ラックの予想失敗。ラックに" + dmg + "ダメージ"); }
+                
+                // 次のターンへ
+                updates["state"] = "draw";
+                updates["pending"] = null;
+                updates["turnCount"] = (data.turnCount || 1) + 1;
+                updates["turn"] = "pick";
+                updates["flags/doubleDamageActive"] = false;
+
+                // HPチェック
+                const rackHP = (updates["rack/hp"] !== undefined ? updates["rack/hp"] : data.rack.hp) || INITIAL_HP;
+                if (rackHP <= 0) {
+                    updates["state"] = "game_over";
+                    updates["pick/score"] = data.pick.score + 1;
+                    pushLog("ピックの勝利！ラックHPが0になりました。");
+                }
+
+                pushLog("ピックはジョーカーを所持していませんでした。ラックのコールは失敗しました。");
+                return { ...data, ...updates };
+            }
+            return undefined;
+        });
+      } catch (error) {
+        pushLog("応答エラー: " + error.message);
+        console.error("応答エラー:", error);
+      }
+  }
+}
+
+/**
+ * アイテム使用処理 (ラックのみ、HP<=2、1ゲーム1回のみ)
+ */
+async function useItem() {
+  if (!currentRoomId || !currentData || currentData.rack.token !== token) return;
+  const myData = currentData.rack;
+
+  if (currentData.state !== 'predict' || currentData.turn !== 'rack') {
+    pushLog("アイテムは予想フェーズ開始時のみ使用可能です。");
+    return;
+  }
+  if (myData.hp > 2) {
+    pushLog("HPが3以上のため、アイテムを使用できません。");
+    return;
+  }
+  if (!myData.item || myData.itemUsed) {
+    pushLog("アイテムを所持していないか、既に今ゲームで使用済みです。");
+    return;
+  }
+  
+  const itemToUse = myData.item;
+  
+  const roomRef = ref(db, 'rooms/' + currentRoomId);
+  try {
+    await runTransaction(roomRef, (data) => {
+      if (data && data.rack.token === token && data.state === 'predict' && data.turn === 'rack' && data.rack.hp <= 2 && data.rack.item && !data.rack.itemUsed) {
+        let updates = {};
+        updates["rack/itemUsed"] = true; // 使用フラグをセット
+        
+        switch (itemToUse) {
+          case "Heal1":
+            // HPを1回復 (最大HPを超えない)
+            updates["rack/hp"] = Math.min((data.rack.hp || INITIAL_HP) + 1, INITIAL_HP);
+            pushLog("Heal1を使用: ラックのHPが1回復しました。");
+            break;
+          case "Peek2":
+            // 山札のトップ2枚をラックに公開 (revealToRackフラグを使用)
+            const deck = data.deck || [];
+            if(deck.length < 2) { 
+                pushLog("（エラー）山札のカードが2枚未満のため、Peek2は使用できません。"); 
+                updates["rack/itemUsed"] = false; // 使用フラグを元に戻す
+                return { ...data, ...updates }; 
+            }
+            updates["flags/revealToRack"] = deck.slice(0, 2);
+            pushLog("Peek2を使用: 山札のトップ2枚を確認しました。");
+            break;
+          case "Shield1":
+            // Rackの守護フラグをセット
+            updates["flags/shieldRack"] = true;
+            pushLog("Shield1を使用: ラックに守護効果を付与しました。");
+            break;
+          case "DoubleDamage":
+            // ダメージ2倍フラグをセット
+            updates["flags/doubleDamageActive"] = true;
+            pushLog("DoubleDamageを使用: 次の予想ダメージが2倍になります。");
+            break;
+          case "ForceDeclare":
+            // Pickにジョーカーコールを強制する（ジョーカー所持の場合）
+            if(!(data.pick.hand || []).includes("J")) {
+                 pushLog("ForceDeclareを使用: ピックはジョーカーを所持していません（効果なし）。");
+            } else {
+                // 強制ジョーカーコール処理
+                updates["state"] = "joker_call";
+                updates["turn"] = "pick"; // ピックのターンに渡し、応答を待つ
+                updates["pending"] = { jokerCallBy: "rack" };
+                pushLog("ForceDeclareを使用: ピックにジョーカーコールを強制しました。");
+            }
+            break;
+          case "PeekSelf":
+            // 自分のアイテムを再シャッフル
+            const newItem = createInitialItem();
+            updates["rack/item"] = newItem;
+            updates["rack/itemUsed"] = false; // 再シャッフルしたので使用フラグをリセット
+            pushLog(`PeekSelfを使用: アイテムを再抽選しました。新しいアイテム: ${newItem}`);
+            break;
+          default:
+            pushLog(`不明なアイテム ${itemToUse} の使用を試みました。`);
+            updates["rack/itemUsed"] = false; // 使用フラグを元に戻す
+            return { ...data, ...updates }; 
+        }
+
+        // PeekSelf以外はアイテムを消費し、アイテムをnullにする
+        if(itemToUse !== "PeekSelf") {
+            updates["rack/item"] = null;
+        }
+
+        return { ...data, ...updates };
+      }
+      return undefined;
+    });
+  } catch (error) {
+    pushLog("アイテム使用エラー: " + error.message);
+    console.error("アイテム使用エラー:", error);
+  }
+}
+
+/**
+ * 部屋のリセット処理
+ */
+async function resetRoom() {
+    if (!currentRoomId) return;
+    const roomRef = ref(db, 'rooms/' + currentRoomId);
+    
+    try {
+        await set(roomRef, null); // ルームデータを削除
+        localStorage.removeItem("currentRoomId");
+        currentRoomId = null;
+        // UIを初期状態に戻す
+        renderGame(null);
+        pushLog("ルームをリセットしました。");
+        // ボタンを有効化
+        if (el.btnCreate) el.btnCreate.disabled = false;
+        if (el.btnJoin) el.btnJoin.disabled = false;
+
+    } catch (error) {
+        pushLog("リセットエラー: " + error.message);
+        console.error("リセットエラー:", error);
+    }
+}
+
+
+// --------------------
+// イベントリスナー
+// --------------------
+
+// ルーム作成
+if (el.btnCreate) el.btnCreate.onclick = () => {
+    const roomId = el.roomInput ? el.roomInput.value.trim() : null;
+    createRoom(roomId);
 };
 
+// ルーム参加
+if (el.btnJoin) el.btnJoin.onclick = () => {
+    const roomId = el.roomInput ? el.roomInput.value.trim() : null;
+    joinRoom(roomId);
+};
+
+// リセット
+if (el.btnReset) el.btnReset.onclick = () => {
+    if (confirm("本当にこのルームをリセットしてよろしいですか？")) {
+        resetRoom();
+    }
+};
+
+// ドロー
+if (el.btnDraw) el.btnDraw.onclick = () => {
+    if (currentData && currentData.state === 'joker_call' && currentData.pending && currentData.pending.jokerCallBy === "rack") {
+        respondToJokerCall(); // 強制ジョーカーコールへの応答
+    } else {
+        drawCard();
+    }
+};
+
+// 初期予想
+if (el.btnPredict) el.btnPredict.onclick = () => makePrediction(false);
+
+// エクストラ予想
+if (el.btnExtra) el.btnExtra.onclick = () => makePrediction(true);
+
+// ジョーカーコール
+if (el.btnJokerCall) el.btnJokerCall.onclick = () => jokerCall();
+
+// アイテム使用
+if (el.btnUseItem) el.btnUseItem.onclick = () => useItem();
+
+// --------------------
+// 初期化
+// --------------------
+
+// 既にルームに参加している場合は再接続を試みる
+if (currentRoomId) {
+    pushLog(`自動的にルームID: ${currentRoomId} への再接続を試みます...`);
+    setupGameListener(currentRoomId);
+    if (el.roomInput) el.roomInput.value = currentRoomId;
+    // UIボタンの初期状態を更新
+    if (el.btnCreate) el.btnCreate.disabled = true;
+    if (el.btnJoin) el.btnJoin.disabled = true;
+} else {
+    renderGame(null); // UIを初期化
+}
+
+// ログにプレイヤー情報を表示
+pushLog(`あなたのプレイヤートークン: ${token}`);
