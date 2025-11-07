@@ -1,52 +1,50 @@
 <!DOCTYPE html>
-<html>
+<html lang="ja">
   <head>
     <meta charset="UTF-8" />
     <title>Card Game Online</title>
+    <style>
+      body {
+        font-family: "Segoe UI", sans-serif;
+        background: #fafafa;
+        text-align: center;
+        margin-top: 50px;
+      }
+      button {
+        margin: 6px;
+        padding: 10px 20px;
+        border-radius: 8px;
+        border: none;
+        background: #1976d2;
+        color: white;
+        font-size: 16px;
+        cursor: pointer;
+      }
+      button:hover {
+        background: #1565c0;
+      }
+      pre {
+        text-align: left;
+        width: 300px;
+        margin: 20px auto;
+        background: #fff;
+        padding: 10px;
+        border-radius: 6px;
+        box-shadow: 0 0 4px rgba(0, 0, 0, 0.1);
+      }
+    </style>
   </head>
+
   <body>
     <h1>🔥 Card Game Online（仮）</h1>
-    <button id="createRoom">ルーム作成</button>
-    <button id="joinRoom">ルーム参加</button>
-    <pre id="status"></pre>
+    <button onclick="createRoom()">ルーム作成（ピック）</button>
+    <button onclick="joinRoom()">ルーム参加（ラック）</button>
+    <br />
+    <button onclick="drawCards()">ピックのドロー</button>
+    <button onclick="guessCard()">ラックの予想</button>
 
-    <script type="module">
-      // Firebase SDK読み込み
-      import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
-      import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-database.js";
+    <pre id="status">状態がここに表示されます</pre>
 
-      const firebaseConfig = {
-  	apiKey: "AIzaSyB4wWBozfQ2A-2IppWjIGlOYmajSKBtOtM",
-  	authDomain: "luckandpick.firebaseapp.com",
-  	databaseURL: "https://luckandpick-default-rtdb.asia-southeast1.firebasedatabase.app",
-  	projectId: "luckandpick",
-  	storageBucket: "luckandpick.firebasestorage.app",
-  	messagingSenderId: "116413627559",
-  	appId: "1:116413627559:web:51cf6dbc64eb25c060ef82"
-      };
-
-      const app = initializeApp(firebaseConfig);
-      const db = getDatabase(app);
-      const status = document.getElementById("status");
-
-      document.getElementById("createRoom").onclick = async () => {
-        const roomId = Math.random().toString(36).substring(2, 8);
-        await set(ref(db, "rooms/" + roomId), {
-          createdAt: Date.now(),
-          player1: "waiting",
-          turn: "pick",
-        });
-        status.textContent = "ルーム作成完了！ID: " + roomId;
-      };
-
-      document.getElementById("joinRoom").onclick = () => {
-        const id = prompt("ルームIDを入力");
-        const roomRef = ref(db, "rooms/" + id);
-        onValue(roomRef, (snapshot) => {
-          const data = snapshot.val();
-          status.textContent = "ルーム状態:\n" + JSON.stringify(data, null, 2);
-        });
-      };
-    </script>
+    <script type="module" src="./main.js"></script>
   </body>
 </html>
