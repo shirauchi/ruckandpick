@@ -123,7 +123,7 @@ function pushLog(text){
   }).catch(err => console.warn("Failed to push log to Firebase:", err));
 }
 
-// FIX: 役割交代関数 (HP, アイテムはプレイヤーに紐づくため、役割と共にスワップされる)
+// 役割交代関数 (HP, アイテムはプレイヤーに紐づくため、役割と共にスワップされる)
 function swapRoles(currentPick, currentLuck) {
   const nextPick = { // 新しいPickは、以前Luckだったプレイヤーのステータスを引き継ぐ
     hp: currentLuck.hp,
@@ -363,13 +363,19 @@ function renderAll(data){
   el.roleText.textContent = `プレイヤー${initialRole} (${currentRole})`;
 
   // 山札のトップカード表示（Luckのみ）
-  // ... (変更なし) ...
   const topCard = data.deck && data.deck.length > 0 ? data.deck[0] : null;
   el.topImg.src = (isLocalLuck && topCard) ? CARD_SRC[topCard] : BACK_CARD_SRC;
 
-  // ピックの手札（公開予想エリア）表示
+  // 🔽 FIX: ピックの手札（公開予想エリア）表示 - Luckには裏面を表示
   const pickHand = data.pick && data.pick.hand ? data.pick.hand : [];
-  el.pickHand.innerHTML = pickHand.map(c => `<img src="${CARD_SRC[c]}" class="card-img" />`).join("");
+  
+  // Luckまたは観戦者にはカードの裏側（BACK_CARD_SRC）を表示する
+  el.pickHand.innerHTML = pickHand.map(c => {
+      // Pick自身の画面でのみ、実際のカードソースを使用する
+      const src = isLocalPick ? CARD_SRC[c] : BACK_CARD_SRC;
+      return `<img src="${src}" class="card-img" />`;
+  }).join("");
+  // 🔼 ここまで修正
 
   // 自分の手札（ローカル）表示
   const localPlayer = localRole === "pick" ? data.pick : localRole === "luck" ? data.luck : null;
@@ -378,12 +384,15 @@ function renderAll(data){
 
   // アイテム情報表示
   el.myItemText.textContent = localPlayer && localPlayer.item ? `${localPlayer.item} (${localPlayer.itemUsed ? '使用済' : '未'})` : "なし";
-  
+
+  // 🔽 FIX: アイテムカードとボタンの描画処理を追加
   if (localRole === "luck" && localPlayer) {
       renderItemArea(localPlayer.item, localPlayer.itemUsed, data, isLocalLuck);
   } else {
+      // Luck以外の場合はアイテムエリアをクリア (ボタンが表示されないようにする)
       el.itemArea.innerHTML = ''; 
   }
+  // 🔼 ここまで修正
 
   // 使用済みカードエリア表示
   el.usedCardArea.innerHTML = (data.usedCards || []).map(c => `<img src="${CARD_SRC[c]}" class="card-img small-card" />`).join("");
@@ -394,7 +403,7 @@ function renderAll(data){
       ? revealCards.map(c => `<img src="${CARD_SRC[c]}" class="card-img small-card" />`).join("")
       : "";
 
-  // NEW: ForceDeclareによる宣言情報の公開（Luckのみ）
+  // ForceDeclareによる宣言情報の公開（Luckのみ）
   const declareText = data.flags && data.flags.forceDeclareText ? data.flags.forceDeclareText : null;
   let declareEl = document.getElementById("declareText");
   let declareContainer = document.getElementById("declareContainer");
@@ -428,7 +437,7 @@ function renderAll(data){
   updateButtons(data, isLocalPick, isLocalLuck); 
 
   /* =======================================
-     NEW: Think Time Timer Logic (クライアント側で実行)
+     Think Time Timer Logic (クライアント側で実行)
      ======================================= */
   if (thinkTimeInterval) {
       clearInterval(thinkTimeInterval);
@@ -479,7 +488,7 @@ function renderAll(data){
   }
 
   /* =======================================
-     NEW: ゲームオーバー判定 (HPと山札切れ)
+     ゲームオーバー判定 (HPと山札切れ)
      ======================================= */
   const deck = data.deck || [];
   
@@ -524,8 +533,8 @@ function renderAll(data){
   }
 }
 
+// アイテムエリアの描画関数
 function renderItemArea(itemKey, used, data, isLocalLuck){ 
-  // ... (変更なし) ...
   el.itemArea.innerHTML = '';
   if(!itemKey) return;
   
@@ -538,7 +547,7 @@ function renderItemArea(itemKey, used, data, isLocalLuck){
   
   const itemImg = document.createElement('img');
   itemImg.src = ITEM_SRC[itemKey];
-  itemImg.className = 'card-img item-img';
+  itemImg.className = 'imgcard item-img'; // item-imgはitem-card-base内で使用
   
   itemBase.appendChild(itemImg);
   itemWrapper.appendChild(itemBase);
@@ -950,7 +959,7 @@ async function luckExtraPredict(){
       }
       
     } else {
-      // FIX: エクストラ予想失敗 -> ダメージなし
+      // エクストラ予想失敗 -> ダメージなし
       pushLog(`ラックのエクストラ予想「${p1}, ${p2}」が外れ。ラックにダメージなし`);
     }
 
@@ -984,7 +993,7 @@ async function applyItemEffect(itemKey){
     const isLocalLuck = data.luck && data.luck.token === token;
     const luckHp = data.luck.hp || INITIAL_HP;
     
-    // NEW: アイテム使用可能フェーズのガード（guess, extra, wait_for_advanceのみ）
+    // アイテム使用可能フェーズのガード（guess, extra, wait_for_advanceのみ）
     if(data.state === "joker_call" || data.state === "draw" || data.state === "think_time") {
         pushLog("（エラー）アイテムは予想フェーズでのみ使用可能です。"); 
         return data;
@@ -1007,16 +1016,21 @@ async function applyItemEffect(itemKey){
 
     switch(itemKey){
       case "Peek2":
-        // 山札の上から2枚を読み込み、Luckのみに公開するフラグをセット
-        const deck = data.deck || [];
-        if(deck.length < 2) { 
-            pushLog("（エラー）山札のカードが2枚未満のため、Peek2は使用できません。"); 
+        // 🔽 FIX: 山札ではなくPickの手札を参照する
+        const pickHand = data.pick.hand || [];
+        
+        // Pickの手札が3枚あることを確認
+        if(pickHand.length !== 3) { 
+            pushLog("（エラー）ピックの手札が3枚ではないため、Peek2は使用できません。"); 
             data.luck.itemUsed = false;
             return data;
         }
+        
         data.flags = data.flags || {};
-        data.flags.revealToLuck = deck.slice(0, 2);
-        pushLog("Peek2を使用: 山札のトップ2枚を確認しました。");
+        // Pickの手札から2枚（最初の2枚）を公開
+        data.flags.revealToLuck = pickHand.slice(0, 2); 
+        pushLog("Peek2を使用: ピックの手札の上から2枚を確認しました。");
+        // 🔼 ここまで修正
         break;
         
       case "Shield1":
@@ -1034,9 +1048,9 @@ async function applyItemEffect(itemKey){
         break;
         
       case "ForceDeclare":
-        // FIX: Pickに「持っていないカード種類」を宣言させる
-        const pickHand = data.pick.hand || [];
-        const uniqueCards = new Set(pickHand.filter(c => c !== "J"));
+        // Pickに「持っていないカード種類」を宣言させる
+        const currentPickHand = data.pick.hand || [];
+        const uniqueCards = new Set(currentPickHand.filter(c => c !== "J"));
         
         let notHeld = [];
         // O, T, X のうち、Pickの手札にないカードを探す
@@ -1073,4 +1087,3 @@ async function applyItemEffect(itemKey){
 if (el.roomInput.value.trim()) {
     joinRoom();
 }
-
