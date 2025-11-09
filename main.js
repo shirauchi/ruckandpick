@@ -521,11 +521,13 @@ function renderAll(data){
     }
     
     if(data.state !== "game_over"){
+        // 状態が game_over ではない場合にのみトランザクションを実行し、状態を確定させる
         pushLog(`*** ${message} ***`);
         runTransaction(ref(db, `rooms/${roomId}`), (currentData) => {
-            if (currentData) {
+            if (currentData && currentData.state !== "game_over") {
                 currentData.state = "game_over";
                 currentData.winner = winner;
+                currentData.timer = null; // タイマーをクリア
             }
             return currentData;
         });
@@ -705,7 +707,7 @@ async function pickDraw(){
     }
 
     data.pick.hand = drawn; 
-    data.timer = 3.0; // NEW: タイマーを設定
+    data.timer = 5.0; // 💡 UPDATED: Think Timeを5.0秒に延長
 
     if(drawn.includes("J")){
       // ジョーカーを引いた場合 -> draw (ジョーカーコール義務の継続)
@@ -1016,7 +1018,7 @@ async function applyItemEffect(itemKey){
 
     switch(itemKey){
       case "Peek2":
-        // 🔽 FIX: 山札ではなくPickの手札を参照する
+        // 💡 FIX: 山札ではなくPickの手札を参照する
         const pickHand = data.pick.hand || [];
         
         // Pickの手札が3枚あることを確認
@@ -1030,7 +1032,6 @@ async function applyItemEffect(itemKey){
         // Pickの手札から2枚（最初の2枚）を公開
         data.flags.revealToLuck = pickHand.slice(0, 2); 
         pushLog("Peek2を使用: ピックの手札の上から2枚を確認しました。");
-        // 🔼 ここまで修正
         break;
         
       case "Shield1":
