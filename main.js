@@ -686,11 +686,37 @@ async function pickDraw(){
     }
 
     let deck = data.deck || [];
-    if(deck.length < 3) { 
-        pushLog("（エラー）山札のカードが足りません。リセットしてください。"); 
-        return data;
-    }
     
+    // 💡 FIX: 山札が3枚未満の場合、ドローエラーではなくゲームオーバー判定へ移行
+    if(deck.length < 3) { 
+        if (data.state !== "game_over") {
+            const pickHp = data.pick.hp || 0;
+            const luckHp = data.luck.hp || 0;
+            let winner = null;
+            let message = "";
+            
+            // 山札切れによる勝敗判定ロジック
+            if (pickHp > luckHp) {
+                winner = "ピック";
+                message = `山札切れによりゲーム終了。HP差でピック (${pickHp}HP) の勝利！`;
+            } else if (luckHp > pickHp) {
+                winner = "ラック";
+                message = `山札切れによりゲーム終了。HP差でラック (${luckHp}HP) の勝利！`;
+            } else {
+                winner = "draw";
+                message = "山札切れによりゲーム終了。HP同点のため引き分けです。";
+            }
+            
+            data.state = "game_over";
+            data.winner = winner;
+            data.timer = null;
+            pushLog("（通知）山札が3枚未満のためドロー不可。");
+            pushLog(`*** ${message} ***`);
+        }
+        return data; // ゲームオーバー状態でトランザクションを完了
+    }
+    // 💡 FIX ここまで
+
     const drawn = deck.slice(0,3);
     const rest = deck.slice(3);
 
@@ -707,7 +733,7 @@ async function pickDraw(){
     }
 
     data.pick.hand = drawn; 
-    data.timer = 5.0; // 💡 UPDATED: Think Timeを5.0秒に延長
+    data.timer = 5.0; // 💡 UPDATED: Think Timeは5.0秒
 
     if(drawn.includes("J")){
       // ジョーカーを引いた場合 -> draw (ジョーカーコール義務の継続)
