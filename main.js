@@ -790,7 +790,8 @@ async function pickJokerCall(){
         data.pending = { jokerCallBy: "pick" }; 
         data.timer = null; // NEW: タイマーをクリア
         
-        pushLog(`ピックがジョーカーコールを宣言しました（${isCompulsory ? "義務実行" : "権利行使"}、ラックの予想待ち）`);
+        // ログ出力から「義務実行」または「権利行使」の情報を削除
+        pushLog(`ピックがジョーカーコールを宣言しました（ラックの予想待ち）`);
         
         return data;
     }).catch(error => {
